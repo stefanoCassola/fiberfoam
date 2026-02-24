@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "ci"
+      - "dependencies"
+
+  - package-ecosystem: "pip"
+    directory: "/gui/backend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "python"
+      - "dependencies"
+
+  - package-ecosystem: "npm"
+    directory: "/gui/frontend"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "frontend"
+      - "dependencies"

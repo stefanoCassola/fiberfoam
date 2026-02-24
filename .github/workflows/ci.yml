@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libeigen3-dev libfftw3-dev \
+            libyaml-cpp-dev nlohmann-json3-dev libgtest-dev
+
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DENABLE_ONNX=OFF
+          cmake --build . -j$(nproc)
+
+      - name: Run tests
+        run: cd build && ctest --output-on-failure
+
+      - name: Check formatting
+        run: |
+          find src -name '*.cpp' -o -name '*.h' | head -20 | \
+            xargs clang-format --dry-run --Werror 2>&1 || true

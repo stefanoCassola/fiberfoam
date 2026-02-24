@@ -1,0 +1,7 @@
+{
+    "res80": [
+        {"x": {"max velocity": 0.001234}},
+        {"y": {"max velocity": 0.001567}},
+        {"z": {"max velocity": 0.001890}}
+    ]
+}

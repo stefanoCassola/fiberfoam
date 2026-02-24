@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  gui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:8000"
+    volumes:
+      - fiberfoam-data:/data
+      - ./models:/app/models
+    environment:
+      - FIBERFOAM_UPLOAD_DIR=/data/uploads
+      - FIBERFOAM_MODELS_DIR=/app/models
+    restart: unless-stopped
+
+volumes:
+  fiberfoam-data:

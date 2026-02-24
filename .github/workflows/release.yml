@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libeigen3-dev libfftw3-dev \
+            libyaml-cpp-dev nlohmann-json3-dev
+
+      - name: Build release binaries
+        run: |
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_ONNX=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_GUI=OFF
+          cmake --build . -j$(nproc)
+
+      - name: Package binaries
+        run: |
+          mkdir -p release
+          cp build/src/apps/*/fiberfoam* release/ 2>/dev/null || true
+          cp build/src/libfiberfoam/*.so* release/ 2>/dev/null || true
+          cp build/src/libfiberfoam/*.a release/ 2>/dev/null || true
+          tar czf fiberfoam-${{ github.ref_name }}-linux-x86_64.tar.gz -C release .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'rc') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') }}
+          generate_release_notes: true
+          files: |
+            fiberfoam-${{ github.ref_name }}-linux-x86_64.tar.gz

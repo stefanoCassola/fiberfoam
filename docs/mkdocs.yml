@@ -1,0 +1,36 @@
+site_name: FiberFoam Documentation
+site_description: High-performance voxel-to-OpenFOAM mesh conversion with ML prediction
+repo_url: https://github.com/stefanoCassola/fiberfoam
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue
+      accent: indigo
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+  - User Guide:
+    - CLI Reference: cli_reference.md
+    - GUI Guide: gui_guide.md
+  - Theory:
+    - Permeability Calculation: theory/permeability.md
+    - Fiber-Free Regions: theory/fiber_free_regions.md
+  - Development:
+    - Architecture: development/architecture.md
+    - Contributing: development/contributing.md
+  - API Reference: api/
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - toc:
+      permalink: true

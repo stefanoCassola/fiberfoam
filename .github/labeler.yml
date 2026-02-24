@@ -1,0 +1,53 @@
+# Configuration for actions/labeler
+# Automatically labels PRs based on changed file paths
+
+cpp:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/**/*.cpp'
+          - 'src/**/*.h'
+          - 'src/**/*.hpp'
+          - 'CMakeLists.txt'
+
+python:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'gui/backend/**/*.py'
+          - 'gui/backend/requirements*.txt'
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'gui/frontend/**'
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docs/**'
+          - '**/*.md'
+          - '**/*.rst'
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - '.github/**'
+
+docker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'docker/**'
+          - '**/Dockerfile*'
+          - '**/docker-compose*.yml'
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'tests/**'
+          - '**/*_test.cpp'
+          - '**/*_test.py'
+
+openfoam:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/solver/**'
+          - 'VoxelToFoam/**'

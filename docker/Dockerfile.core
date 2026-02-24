@@ -1,0 +1,43 @@
+# =============================================================================
+# fiberFoam C++ Core Only Dockerfile
+# Builds the core library and CLI applications without GUI or OpenFOAM
+# =============================================================================
+
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build and runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        cmake \
+        g++ \
+        make \
+        pkg-config \
+        libeigen3-dev \
+        libfftw3-dev \
+        libyaml-cpp-dev \
+        nlohmann-json3-dev \
+        libgtest-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+COPY CMakeLists.txt ./
+COPY src/ ./src/
+
+RUN mkdir -p out && cd out \
+    && cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_ONNX=OFF \
+        -DBUILD_TESTS=OFF \
+        -DBUILD_GUI=OFF \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && cmake --build . -j"$(nproc)" \
+    && cmake --install .
+
+# Clean up build artifacts to shrink image
+RUN rm -rf /build
+
+WORKDIR /workspace
+
+ENTRYPOINT ["/bin/bash"]

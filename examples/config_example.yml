@@ -1,0 +1,45 @@
+# FiberFoam configuration example
+geometry:
+  input: ./geometry.dat
+  voxelResolution: 320
+  voxelSize: 0.5e-6
+
+flow:
+  directions: [x, y, z]
+  fluid:
+    kinematicViscosity: 7.934782609e-05
+    density: 920.0
+    dynamicViscosity: 0.073
+    pressureInlet: 1.0
+    pressureOutlet: 0.0
+
+bufferZones:
+  inletLayers: 10
+  outletLayers: 10
+
+mesh:
+  connectivityCheck: true
+  autoBoundaryFaceSets: true
+  periodic: false
+
+prediction:
+  enabled: true
+  modelsDir: ./models
+  modelResolution: 80
+
+solver:
+  name: simpleFoamMod
+  maxIterations: 1000000
+  writeInterval: 50000
+  convergence:
+    enabled: true
+    slope: 0.01
+    window: 10
+    errorBound: 0.01
+
+postProcessing:
+  fibrousRegionOnly: true
+  method: both
+
+output:
+  path: ./results

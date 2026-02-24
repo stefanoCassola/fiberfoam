@@ -1,0 +1,14 @@
+# FiberFoam model registry
+models:
+  - resolution: 80
+    direction: x
+    path: res80/x_80.onnx
+    description: "X-direction velocity prediction at 80^3 resolution"
+  - resolution: 80
+    direction: y
+    path: res80/y_80.onnx
+    description: "Y-direction velocity prediction at 80^3 resolution"
+  - resolution: 80
+    direction: z
+    path: res80/z_80.onnx
+    description: "Z-direction velocity prediction at 80^3 resolution"

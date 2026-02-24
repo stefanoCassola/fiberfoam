@@ -1,0 +1,45 @@
+# =============================================================================
+# fiberFoam Standalone GUI Dockerfile (Development)
+# FastAPI backend + React frontend only -- no C++ build, no OpenFOAM
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build React frontend
+# ---------------------------------------------------------------------------
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --frozen-lockfile || npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime with FastAPI backend serving the built frontend
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install backend dependencies
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt 2>/dev/null \
+    || echo "No requirements.txt found; skipping pip install"
+
+# Copy backend source
+COPY backend/ ./
+
+# Copy built frontend
+COPY --from=frontend-builder /app/dist ./frontend/dist
+
+# Create data directories
+RUN mkdir -p /data/uploads /app/models
+
+ENV FIBERFOAM_UPLOAD_DIR=/data/uploads
+ENV FIBERFOAM_MODELS_DIR=/app/models
+
+EXPOSE 8000
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

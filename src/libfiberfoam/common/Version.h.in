@@ -1,0 +1,6 @@
+#pragma once
+
+#define FIBERFOAM_VERSION_MAJOR @fiberfoam_VERSION_MAJOR@
+#define FIBERFOAM_VERSION_MINOR @fiberfoam_VERSION_MINOR@
+#define FIBERFOAM_VERSION_PATCH @fiberfoam_VERSION_PATCH@
+#define FIBERFOAM_VERSION "@fiberfoam_VERSION@"

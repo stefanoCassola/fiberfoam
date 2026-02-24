@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg-primary: #0a0e1a;
+    --color-bg-secondary: #111827;
+    --color-bg-card: #1f2937;
+    --color-border: #374151;
+    --color-accent: #3b82f6;
+  }
+
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  /* Custom scrollbar for dark theme */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-900;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-gray-800 border border-gray-700 rounded-xl p-6 shadow-lg;
+  }
+
+  .card-header {
+    @apply text-lg font-semibold text-gray-100 mb-4 pb-3 border-b border-gray-700;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white font-medium
+           rounded-lg transition-colors duration-200 disabled:opacity-50
+           disabled:cursor-not-allowed focus:outline-none focus:ring-2
+           focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium
+           rounded-lg transition-colors duration-200 disabled:opacity-50
+           disabled:cursor-not-allowed focus:outline-none focus:ring-2
+           focus:ring-gray-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium
+           rounded-lg transition-colors duration-200 disabled:opacity-50
+           disabled:cursor-not-allowed;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg
+           text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2
+           focus:ring-primary-500 focus:border-transparent transition-colors;
+  }
+
+  .select-field {
+    @apply w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg
+           text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500
+           focus:border-transparent appearance-none cursor-pointer;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-gray-300 mb-1;
+  }
+
+  .stat-value {
+    @apply text-2xl font-bold text-primary-400;
+  }
+
+  .stat-label {
+    @apply text-sm text-gray-400 mt-1;
+  }
+
+  .log-line {
+    @apply font-mono text-sm leading-relaxed;
+  }
+
+  .log-line-info {
+    @apply text-gray-300;
+  }
+
+  .log-line-warning {
+    @apply text-yellow-400;
+  }
+
+  .log-line-error {
+    @apply text-red-400;
+  }
+
+  .log-line-success {
+    @apply text-green-400;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-blue-300;
+  }
+}
