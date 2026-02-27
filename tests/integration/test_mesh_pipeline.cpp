@@ -9,9 +9,9 @@ class MeshPipelineTest : public ::testing::Test
 protected:
     VoxelArray loadGeometry5x5x5()
     {
-        // Load the 5x5x5 fixture: center column (x=2) is fluid after inversion
+        // Load the 5x5x5 fixture: center column (x=2) is fluid
+        // Note: fromDatFile already inverts the convention (0->1, 1->0)
         VoxelArray arr = VoxelArray::fromDatFile("fixtures/geometry_5x5x5.dat", 5);
-        arr.invertConvention();
         return arr;
     }
 

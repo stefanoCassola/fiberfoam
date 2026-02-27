@@ -36,7 +36,7 @@ target_include_directories(fiberfoam PUBLIC
 target_link_libraries(fiberfoam PUBLIC
     Eigen3::Eigen
     ${FFTW3_LIBRARIES}
-    yaml-cpp::yaml-cpp
+    yaml-cpp
     nlohmann_json::nlohmann_json
 )
 

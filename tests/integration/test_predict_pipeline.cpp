@@ -9,9 +9,9 @@ class PredictPipelineTest : public ::testing::Test
 protected:
     VoxelArray loadAndPrepareGeometry()
     {
-        // Load 5x5x5 fixture and invert
+        // Load 5x5x5 fixture
+        // Note: fromDatFile already inverts the convention (0->1, 1->0)
         VoxelArray arr = VoxelArray::fromDatFile("fixtures/geometry_5x5x5.dat", 5);
-        arr.invertConvention();
         return arr;
     }
 };

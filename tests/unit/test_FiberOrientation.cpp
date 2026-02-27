@@ -27,7 +27,9 @@ protected:
     }
 
     // Create geometry with horizontal stripes (fibers along x-axis)
-    // Pattern: alternating solid/fluid layers along z, uniform in x
+    // Pattern: alternating solid/fluid layers along y, uniform in x
+    // Using y-alternation so that FFT power concentrates along ky,
+    // which the z-slice projection and PCA detect as a high angle.
     VoxelArray makeHorizontalStripes(int n)
     {
         std::vector<int8_t> data(n * n * n, 0);
@@ -37,8 +39,8 @@ protected:
             {
                 for (int x = 0; x < n; ++x)
                 {
-                    // Alternating layers along z
-                    data[x + n * (y + n * z)] = (z % 2 == 0) ? 1 : 0;
+                    // Alternating layers along y
+                    data[x + n * (y + n * z)] = (y % 2 == 0) ? 1 : 0;
                 }
             }
         }

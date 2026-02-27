@@ -1,3 +1,4 @@
+#include <cmath>
 #include <gtest/gtest.h>
 #include "postprocessing/Permeability.h"
 #include "postprocessing/Convergence.h"
@@ -149,7 +150,7 @@ TEST_F(PostprocessPipelineTest, PermeabilityAndConvergence)
     // Simulate convergence: velocity gradually stabilizes
     for (int iter = 0; iter < 20; ++iter)
     {
-        double velocity = 0.001 * (1.0 - 0.5 * std::exp(-iter * 0.3));
+        double velocity = 0.001 * (1.0 - 0.5 * std::exp(-iter * 0.5));
         auto field = createUniformChannelFlow(3, velocity);
 
         PermeabilityResult result = calc.compute(
