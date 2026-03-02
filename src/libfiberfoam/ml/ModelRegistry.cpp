@@ -122,9 +122,11 @@ ModelRegistry ModelRegistry::fromDirectory(const std::string& modelsDir, int res
     ModelRegistry registry;
     registry.modelsDir_ = modelsDir;
 
-    // Regex to extract axis letter and resolution from filenames
-    // Matches patterns like: x_80, y-80, x80, model_x_80, etc.
-    std::regex pattern(R"(([xyz])[_\-]?(\d+))", std::regex::icase);
+    // Regex patterns for model filenames:
+    //   Pattern 1: axis + resolution, e.g. x_80.onnx, y-80.onnx, model_x_80.onnx
+    //   Pattern 2: axis only, e.g. x.onnx, y.onnx (assumes requested resolution)
+    std::regex patternWithRes(R"(([xyz])[_\-]?(\d+))", std::regex::icase);
+    std::regex patternAxisOnly(R"(^([xyz])$)", std::regex::icase);
 
     for (const auto& entry : fs::recursive_directory_iterator(modelsDir))
     {
@@ -138,17 +140,28 @@ ModelRegistry ModelRegistry::fromDirectory(const std::string& modelsDir, int res
 
         std::string stem = entry.path().stem().string();
         std::smatch match;
-        if (!std::regex_search(stem, match, pattern))
+        std::string axisStr;
+        int fileResolution = resolution;
+
+        if (std::regex_search(stem, match, patternWithRes))
+        {
+            axisStr = match[1].str();
+            fileResolution = std::stoi(match[2].str());
+        }
+        else if (std::regex_match(stem, match, patternAxisOnly))
+        {
+            // Bare axis name (e.g. x.onnx) - assume requested resolution
+            axisStr = match[1].str();
+            fileResolution = resolution;
+        }
+        else
         {
             Logger::warning("  Skipping unrecognized ONNX file: " + entry.path().string());
             continue;
         }
 
-        std::string axisStr = match[1].str();
         // Normalize to lowercase
         std::transform(axisStr.begin(), axisStr.end(), axisStr.begin(), ::tolower);
-
-        int fileResolution = std::stoi(match[2].str());
 
         // Only register models matching the requested resolution
         if (fileResolution != resolution)

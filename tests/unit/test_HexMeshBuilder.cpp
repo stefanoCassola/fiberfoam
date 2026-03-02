@@ -124,6 +124,74 @@ TEST_F(HexMeshBuilderTest, BoundaryPatchesExist)
     EXPECT_FALSE(mesh.boundaryPatches.empty());
 }
 
+TEST_F(HexMeshBuilderTest, PatchNamingXFlow)
+{
+    VoxelArray geom = makeAllFluid2x2x2();
+    auto opts = defaultOpts();
+    opts.flowDirection = FlowDirection::X;
+    HexMeshBuilder builder(geom, opts);
+
+    MeshData mesh = builder.build();
+
+    // Inlet keeps positional name "left_x", outlet is "outlet"
+    EXPECT_TRUE(mesh.boundaryPatches.count("left_x") > 0);
+    EXPECT_TRUE(mesh.boundaryPatches.count("outlet") > 0);
+    // Should NOT have old-style names
+    EXPECT_EQ(mesh.boundaryPatches.count("inlet"), 0u);
+    EXPECT_EQ(mesh.boundaryPatches.count("walls"), 0u);
+    // Positional name for outlet should map to "right_x"
+    EXPECT_EQ(mesh.patchPositionalNames.at("outlet"), "right_x");
+}
+
+TEST_F(HexMeshBuilderTest, PatchNamingYFlow)
+{
+    VoxelArray geom = makeAllFluid2x2x2();
+    auto opts = defaultOpts();
+    opts.flowDirection = FlowDirection::Y;
+    HexMeshBuilder builder(geom, opts);
+
+    MeshData mesh = builder.build();
+
+    // Inlet keeps positional name "front_y", outlet is "outlet"
+    EXPECT_TRUE(mesh.boundaryPatches.count("front_y") > 0);
+    EXPECT_TRUE(mesh.boundaryPatches.count("outlet") > 0);
+    EXPECT_EQ(mesh.patchPositionalNames.at("outlet"), "back_y");
+}
+
+TEST_F(HexMeshBuilderTest, PatchNamingZFlow)
+{
+    VoxelArray geom = makeAllFluid2x2x2();
+    auto opts = defaultOpts();
+    opts.flowDirection = FlowDirection::Z;
+    HexMeshBuilder builder(geom, opts);
+
+    MeshData mesh = builder.build();
+
+    // Inlet keeps positional name "bottom_z", outlet is "outlet"
+    EXPECT_TRUE(mesh.boundaryPatches.count("bottom_z") > 0);
+    EXPECT_TRUE(mesh.boundaryPatches.count("outlet") > 0);
+    EXPECT_EQ(mesh.patchPositionalNames.at("outlet"), "top_z");
+}
+
+TEST_F(HexMeshBuilderTest, RemainingPatchWithHollowGeometry)
+{
+    // 3x3x3 geometry with center voxel (1,1,1) removed.
+    // Faces adjacent to the hole are inside the bounding box and
+    // won't match any positional patch -> "remaining".
+    std::vector<int8_t> data(27, 1);
+    data[1 + 3 * (1 + 3 * 1)] = 0; // remove center voxel (1,1,1)
+    VoxelArray geom(data, 3, 3, 3);
+
+    auto opts = defaultOpts();
+    opts.flowDirection = FlowDirection::X;
+    HexMeshBuilder builder(geom, opts);
+
+    MeshData mesh = builder.build();
+
+    EXPECT_TRUE(mesh.boundaryPatches.count("remaining") > 0);
+    EXPECT_EQ(mesh.boundaryPatches.count("walls"), 0u);
+}
+
 TEST_F(HexMeshBuilderTest, CenterColumnMesh)
 {
     VoxelArray geom = makeCenterColumn3x3x3();

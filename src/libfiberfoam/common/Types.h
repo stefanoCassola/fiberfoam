@@ -115,6 +115,7 @@ struct MeshData
     std::vector<int> neighbour;
     int nInternalFaces = 0;
     std::map<std::string, std::pair<int, int>> boundaryPatches; // name -> (startFace, nFaces)
+    std::map<std::string, std::string> patchPositionalNames;  // display name -> positional name
     std::map<int, CellData> cellMap;
     int nCells = 0;
 };

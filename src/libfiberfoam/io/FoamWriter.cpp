@@ -25,42 +25,29 @@ FoamWriter::FoamWriter(const SimulationConfig& config)
 // Patch name helpers
 // ---------------------------------------------------------------------------
 
-std::string FoamWriter::inletPatchName() const
-{
-    switch (config_.flowDirections.front())
-    {
-    case FlowDirection::X:
-        return "left_x";
-    case FlowDirection::Y:
-        return "front_y";
-    case FlowDirection::Z:
-        return "bottom_z";
-    }
-    return "left_x";
-}
-
-std::string FoamWriter::outletPatchName() const
-{
-    switch (config_.flowDirections.front())
-    {
-    case FlowDirection::X:
-        return "right_x";
-    case FlowDirection::Y:
-        return "back_y";
-    case FlowDirection::Z:
-        return "top_z";
-    }
-    return "right_x";
-}
-
 bool FoamWriter::isInletPatch(const std::string& name) const
 {
-    return name == inletPatchName();
+    FlowDirection dir = config_.flowDirections.front();
+    switch (dir)
+    {
+    case FlowDirection::X:
+        return name == "left_x";
+    case FlowDirection::Y:
+        return name == "front_y";
+    case FlowDirection::Z:
+        return name == "bottom_z";
+    }
+    return false;
 }
 
 bool FoamWriter::isOutletPatch(const std::string& name) const
 {
-    return name == outletPatchName();
+    return name == "outlet";
+}
+
+bool FoamWriter::isWallPatch(const std::string& name) const
+{
+    return name == "remaining";
 }
 
 // ---------------------------------------------------------------------------
@@ -72,10 +59,10 @@ static const char* foamBanner()
     return
         "/*--------------------------------*- C++ -*----------------------------------*\\\n"
         "| =========                 |                                                 |\n"
-        "|  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |\n"
-        "|   \\\\    /   O peration     | Version:  8                                     |\n"
-        "|    \\\\  /    A nd           | Web:      www.openfoam.com                      |\n"
-        "|     \\\\/     M anipulation  |                                                 |\n"
+        "| \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox           |\n"
+        "|  \\\\    /   O peration     | Version:  2312                                  |\n"
+        "|   \\\\  /    A nd           | Website:  www.openfoam.com                      |\n"
+        "|    \\\\/     M anipulation  |                                                 |\n"
         "\\*---------------------------------------------------------------------------*/\n";
 }
 
@@ -86,7 +73,7 @@ static const char* foamSeparator()
 
 static const char* foamFooter()
 {
-    return "\n// ************************************************************************* //";
+    return "\n// ************************************************************************* //\n";
 }
 
 std::string FoamWriter::foamHeader(const std::string& className,
@@ -99,7 +86,7 @@ std::string FoamWriter::foamHeader(const std::string& className,
     oss << "{\n";
     oss << "    version     2.0;\n";
     oss << "    format      ascii;\n";
-    oss << "    arch      \"LSB;label=32;scalar=64\";\n";
+    oss << "    arch        \"LSB;label=32;scalar=64\";\n";
     oss << "    class       " << className << ";\n";
     if (!location.empty())
     {
@@ -134,9 +121,45 @@ std::string FoamWriter::writeCase(const MeshData& mesh, const std::string& baseP
     writeTransportProperties(caseDir);
     writeTurbulenceProperties(caseDir);
     writeCreatePatchDict(mesh, caseDir);
-    writeBlockMeshDict(mesh, caseDir);
+    writeFoamFile(caseDir);
 
     return caseDir;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: patches sorted by startFace (OpenFOAM requires contiguous ordering)
+// ---------------------------------------------------------------------------
+
+static std::vector<std::pair<std::string, std::pair<int, int>>>
+sortedPatches(const std::map<std::string, std::pair<int, int>>& patches)
+{
+    std::vector<std::pair<std::string, std::pair<int, int>>> sorted(
+        patches.begin(), patches.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto& a, const auto& b)
+              { return a.second.first < b.second.first; });
+    return sorted;
+}
+
+// ---------------------------------------------------------------------------
+// Cyclic neighbour mapping
+// ---------------------------------------------------------------------------
+
+static std::string cyclicNeighbour(const std::string& name)
+{
+    if (name == "left_x")
+        return "right_x";
+    if (name == "right_x")
+        return "left_x";
+    if (name == "front_y")
+        return "back_y";
+    if (name == "back_y")
+        return "front_y";
+    if (name == "bottom_z")
+        return "top_z";
+    if (name == "top_z")
+        return "bottom_z";
+    return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +175,7 @@ void FoamWriter::writePolyMesh(const MeshData& mesh, const std::string& caseDir)
     writeOwner(mesh, polyMeshDir);
     writeNeighbour(mesh, polyMeshDir);
     writeFaceSets(mesh, polyMeshDir);
+    writeZoneFiles(polyMeshDir);
 }
 
 void FoamWriter::writePoints(const MeshData& mesh, const std::string& polyMeshDir)
@@ -161,7 +185,7 @@ void FoamWriter::writePoints(const MeshData& mesh, const std::string& polyMeshDi
     if (!file.is_open())
         throw std::runtime_error("Cannot open file: " + path);
 
-    file << foamHeader("vectorField", "points", "constant/polyMesh") << "\n";
+    file << foamHeader("vectorField", "points", "constant/polyMesh") << "\n\n";
 
     int nPoints = static_cast<int>(mesh.points.size());
     file << nPoints << "\n(\n";
@@ -169,11 +193,11 @@ void FoamWriter::writePoints(const MeshData& mesh, const std::string& polyMeshDi
     char buf[128];
     for (const auto& pt : mesh.points)
     {
-        std::snprintf(buf, sizeof(buf), "(%.5e %.5e %.5e)", pt.x, pt.y, pt.z);
+        std::snprintf(buf, sizeof(buf), "(%g %g %g)", pt.x, pt.y, pt.z);
         file << buf << "\n";
     }
 
-    file << ")\n";
+    file << ")\n\n";
     file << foamFooter();
 }
 
@@ -195,7 +219,7 @@ void FoamWriter::writeFaces(const MeshData& mesh, const std::string& polyMeshDir
              << " " << face[2] << " " << face[3] << ")\n";
     }
 
-    file << ")\n";
+    file << ")\n\n";
     file << foamFooter();
 }
 
@@ -208,17 +232,64 @@ void FoamWriter::writeBoundary(const MeshData& mesh, const std::string& polyMesh
 
     file << foamHeader("polyBoundaryMesh", "boundary", "constant/polyMesh") << "\n";
 
-    int nBoundaryFaces = static_cast<int>(mesh.faces.size()) - mesh.nInternalFaces;
+    if (mesh.boundaryPatches.empty())
+    {
+        int nBoundaryFaces = static_cast<int>(mesh.faces.size()) - mesh.nInternalFaces;
+        file << "1\n";
+        file << "(\n";
+        file << "    defaultFaces\n";
+        file << "    {\n";
+        file << "        type            empty;\n";
+        file << "        nFaces          " << nBoundaryFaces << ";\n";
+        file << "        startFace       " << mesh.nInternalFaces << ";\n";
+        file << "    }\n";
+        file << ")\n";
+    }
+    else
+    {
+        auto sorted = sortedPatches(mesh.boundaryPatches);
+        file << sorted.size() << "\n";
+        file << "(\n";
+        for (const auto& [patchName, patchInfo] : sorted)
+        {
+            int startFace = patchInfo.first;
+            int nFaces = patchInfo.second;
 
-    file << "1\n";
-    file << "(\n";
-    file << "    patchName\n";
-    file << "    {\n";
-    file << "        type            empty;\n";
-    file << "        nFaces          " << nBoundaryFaces << ";\n";
-    file << "        startFace       " << mesh.nInternalFaces << ";\n";
-    file << "    }\n";
-    file << ")\n";
+            file << "    " << patchName << "\n";
+            file << "    {\n";
+
+            if (isInletPatch(patchName) || isOutletPatch(patchName))
+            {
+                file << "        type            patch;\n";
+                file << "        nFaces          " << nFaces << ";\n";
+                file << "        startFace       " << startFace << ";\n";
+            }
+            else if (isWallPatch(patchName))
+            {
+                file << "        type            wall;\n";
+                file << "        inGroups        1(wall);\n";
+                file << "        nFaces          " << nFaces << ";\n";
+                file << "        startFace       " << startFace << ";\n";
+            }
+            else
+            {
+                // Cyclic AMI for side patches
+                std::string neighbour = cyclicNeighbour(patchName);
+                file << "        type            cyclicAMI;\n";
+                file << "        inGroups        1(cyclicAMI);\n";
+                file << "        nFaces          " << nFaces << ";\n";
+                file << "        startFace       " << startFace << ";\n";
+                file << "        matchTolerance  0.01;\n";
+                file << "        transform       translational;\n";
+                file << "        neighbourPatch  " << neighbour << ";\n";
+                file << "        separationVector (0 0 0);\n";
+                file << "        AMIMethod       nearestFaceAMI;\n";
+                file << "        requireMatch    0;\n";
+            }
+            file << "    }\n";
+        }
+        file << ")\n";
+    }
     file << foamFooter();
 }
 
@@ -241,8 +312,8 @@ void FoamWriter::writeOwner(const MeshData& mesh, const std::string& polyMeshDir
     oss << "{\n";
     oss << "    version     2.0;\n";
     oss << "    format      ascii;\n";
-    oss << "    arch      \"LSB;label=32;scalar=64\";\n";
-    oss << "    note       \"nPoints:" << nPoints << "  nCells:" << nCells
+    oss << "    arch        \"LSB;label=32;scalar=64\";\n";
+    oss << "    note        \"nPoints:" << nPoints << "  nCells:" << nCells
         << "  nFaces:" << nFaces << "  nInternalFaces:" << nInternal << "\";\n";
     oss << "    class       labelList;\n";
     oss << "    location    \"constant/polyMesh\";\n";
@@ -250,7 +321,7 @@ void FoamWriter::writeOwner(const MeshData& mesh, const std::string& polyMeshDir
     oss << "}\n";
     oss << foamSeparator() << "\n";
 
-    file << oss.str() << "\n";
+    file << oss.str() << "\n\n";
 
     int nOwners = static_cast<int>(mesh.owner.size());
     file << nOwners << "\n(\n";
@@ -258,7 +329,7 @@ void FoamWriter::writeOwner(const MeshData& mesh, const std::string& polyMeshDir
     {
         file << o << "\n";
     }
-    file << ")\n";
+    file << ")\n\n";
     file << foamFooter();
 }
 
@@ -281,8 +352,8 @@ void FoamWriter::writeNeighbour(const MeshData& mesh, const std::string& polyMes
     oss << "{\n";
     oss << "    version     2.0;\n";
     oss << "    format      ascii;\n";
-    oss << "    arch      \"LSB;label=32;scalar=64\";\n";
-    oss << "    note       \"nPoints:" << nPoints << "  nCells:" << nCells
+    oss << "    arch        \"LSB;label=32;scalar=64\";\n";
+    oss << "    note        \"nPoints:" << nPoints << "  nCells:" << nCells
         << "  nFaces:" << nFaces << "  nInternalFaces:" << nInternal << "\";\n";
     oss << "    class       labelList;\n";
     oss << "    location    \"constant/polyMesh\";\n";
@@ -290,7 +361,7 @@ void FoamWriter::writeNeighbour(const MeshData& mesh, const std::string& polyMes
     oss << "}\n";
     oss << foamSeparator() << "\n";
 
-    file << oss.str() << "\n";
+    file << oss.str() << "\n\n";
 
     // Only internal faces have neighbours
     int nNeighbours = static_cast<int>(mesh.neighbour.size());
@@ -299,7 +370,7 @@ void FoamWriter::writeNeighbour(const MeshData& mesh, const std::string& polyMes
     {
         file << n << "\n";
     }
-    file << ")\n";
+    file << ")\n\n";
     file << foamFooter();
 }
 
@@ -313,12 +384,19 @@ void FoamWriter::writeFaceSets(const MeshData& mesh, const std::string& polyMesh
         int startFace = patchInfo.first;
         int nFaces = patchInfo.second;
 
-        std::string path = setsDir + "/" + patchName;
+        // Use positional name for face set file name and object name
+        // (e.g., "outlet" -> "right_x" for the file, matching Python convention)
+        auto it = mesh.patchPositionalNames.find(patchName);
+        std::string positionalName = (it != mesh.patchPositionalNames.end())
+                                         ? it->second
+                                         : patchName;
+
+        std::string path = setsDir + "/" + positionalName;
         std::ofstream file(path);
         if (!file.is_open())
             throw std::runtime_error("Cannot open file: " + path);
 
-        file << foamHeader("faceSet", patchName, "constant/polyMesh/sets") << "\n";
+        file << foamHeader("faceSet", positionalName, "constant/polyMesh/sets") << "\n";
 
         file << nFaces << "\n(\n";
         for (int i = 0; i < nFaces; ++i)
@@ -328,6 +406,18 @@ void FoamWriter::writeFaceSets(const MeshData& mesh, const std::string& polyMesh
         file << ")\n";
         file << foamFooter();
     }
+}
+
+// ---------------------------------------------------------------------------
+// Velocity component formatting: "0.0e+00" for zero, "%.5e" otherwise
+// ---------------------------------------------------------------------------
+
+static void formatVelocityComponent(char* buf, size_t sz, double val)
+{
+    if (val == 0.0)
+        std::snprintf(buf, sz, "0.0e+00");
+    else
+        std::snprintf(buf, sz, "%.5e", val);
 }
 
 // ---------------------------------------------------------------------------
@@ -361,10 +451,13 @@ void FoamWriter::writeVelocityField(const MeshData& mesh, const std::string& cas
         file << mesh.cellMap.size() << "\n";
         file << "(\n";
 
-        char buf[128];
+        char buf[128], ubuf[32], vbuf[32], wbuf[32];
         for (const auto& [id, cell] : mesh.cellMap)
         {
-            std::snprintf(buf, sizeof(buf), "(%.5e %.5e %.5e)", cell.u, cell.v, cell.w);
+            formatVelocityComponent(ubuf, sizeof(ubuf), cell.u);
+            formatVelocityComponent(vbuf, sizeof(vbuf), cell.v);
+            formatVelocityComponent(wbuf, sizeof(wbuf), cell.w);
+            std::snprintf(buf, sizeof(buf), "(%s %s %s)", ubuf, vbuf, wbuf);
             file << buf << "\n";
         }
 
@@ -378,47 +471,30 @@ void FoamWriter::writeVelocityField(const MeshData& mesh, const std::string& cas
     file << "boundaryField\n";
     file << "{\n";
 
-    if (!mesh.boundaryPatches.empty())
+    for (const auto& [patchName, patchInfo] : sortedPatches(mesh.boundaryPatches))
     {
-        for (const auto& [patchName, patchInfo] : mesh.boundaryPatches)
-        {
-            if (isOutletPatch(patchName))
-            {
-                file << "    outlet\n";
-                file << "    {\n";
-                file << "        type            zeroGradient;\n";
-                file << "    }\n";
-            }
-            else if (isInletPatch(patchName))
-            {
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            zeroGradient;\n";
-                file << "    }\n";
-            }
-            else if (patchName == "remaining")
-            {
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            fixedValue;\n";
-                file << "        value           uniform (0 0 0);\n";
-                file << "    }\n";
-            }
-            else
-            {
-                // Periodic patches
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            cyclicAMI;\n";
-                file << "    }\n";
-            }
-        }
-    }
-    else
-    {
-        file << "    patchName\n";
+        file << "    " << patchName << "\n";
         file << "    {\n";
-        file << "        type            empty;\n";
+
+        if (isInletPatch(patchName))
+        {
+            file << "        type            zeroGradient;\n";
+        }
+        else if (isOutletPatch(patchName))
+        {
+            file << "        type            zeroGradient;\n";
+        }
+        else if (isWallPatch(patchName))
+        {
+            file << "        type            fixedValue;\n";
+            file << "        value           uniform (0 0 0);\n";
+        }
+        else
+        {
+            // Cyclic AMI patches
+            file << "        type            cyclicAMI;\n";
+        }
+
         file << "    }\n";
     }
 
@@ -445,50 +521,33 @@ void FoamWriter::writePressureField(const MeshData& mesh, const std::string& cas
 
     double pInKinematic = config_.fluid.pressureInlet / config_.fluid.density;
 
-    if (!mesh.boundaryPatches.empty())
+    for (const auto& [patchName, patchInfo] : sortedPatches(mesh.boundaryPatches))
     {
-        for (const auto& [patchName, patchInfo] : mesh.boundaryPatches)
-        {
-            if (isOutletPatch(patchName))
-            {
-                file << "    outlet\n";
-                file << "    {\n";
-                file << "        type            fixedValue;\n";
-                file << "        value           uniform 0;\n";
-                file << "    }\n";
-            }
-            else if (isInletPatch(patchName))
-            {
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "%.12g", pInKinematic);
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            fixedValue;\n";
-                file << "        value           uniform " << buf << ";\n";
-                file << "    }\n";
-            }
-            else if (patchName == "remaining")
-            {
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            zeroGradient;\n";
-                file << "    }\n";
-            }
-            else
-            {
-                // Periodic patches
-                file << "    " << patchName << "\n";
-                file << "    {\n";
-                file << "        type            cyclicAMI;\n";
-                file << "    }\n";
-            }
-        }
-    }
-    else
-    {
-        file << "    patchName\n";
+        file << "    " << patchName << "\n";
         file << "    {\n";
-        file << "        type            empty;\n";
+
+        if (isInletPatch(patchName))
+        {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%.10g", pInKinematic);
+            file << "        type            fixedValue;\n";
+            file << "        value           uniform " << buf << ";\n";
+        }
+        else if (isOutletPatch(patchName))
+        {
+            file << "        type            fixedValue;\n";
+            file << "        value           uniform 0;\n";
+        }
+        else if (isWallPatch(patchName))
+        {
+            file << "        type            zeroGradient;\n";
+        }
+        else
+        {
+            // Cyclic AMI patches
+            file << "        type            cyclicAMI;\n";
+        }
+
         file << "    }\n";
     }
 
@@ -780,23 +839,6 @@ void FoamWriter::writeTurbulenceProperties(const std::string& caseDir)
 // createPatchDict
 // ---------------------------------------------------------------------------
 
-static std::string cyclicNeighbour(const std::string& name)
-{
-    if (name == "left_x")
-        return "right_x";
-    if (name == "right_x")
-        return "left_x";
-    if (name == "front_y")
-        return "back_y";
-    if (name == "back_y")
-        return "front_y";
-    if (name == "bottom_z")
-        return "top_z";
-    if (name == "top_z")
-        return "bottom_z";
-    return "";
-}
-
 void FoamWriter::writeCreatePatchDict(const MeshData& mesh, const std::string& caseDir)
 {
     std::string path = caseDir + "/system/createPatchDict";
@@ -822,8 +864,14 @@ void FoamWriter::writeCreatePatchDict(const MeshData& mesh, const std::string& c
     file << "patches\n";
     file << "(\n";
 
-    for (const auto& [patchName, patchInfo] : mesh.boundaryPatches)
+    for (const auto& [patchName, patchInfo] : sortedPatches(mesh.boundaryPatches))
     {
+        // Look up positional name for the 'set' field (references face set file)
+        auto posIt = mesh.patchPositionalNames.find(patchName);
+        std::string positionalName = (posIt != mesh.patchPositionalNames.end())
+                                         ? posIt->second
+                                         : patchName;
+
         file << "    {\n";
 
         if (isOutletPatch(patchName))
@@ -842,7 +890,7 @@ void FoamWriter::writeCreatePatchDict(const MeshData& mesh, const std::string& c
             file << "            type patch;\n";
             file << "            }\n";
         }
-        else if (patchName == "remaining")
+        else if (isWallPatch(patchName))
         {
             file << "    name " << patchName << ";\n";
             file << "    patchInfo\n";
@@ -866,13 +914,46 @@ void FoamWriter::writeCreatePatchDict(const MeshData& mesh, const std::string& c
         }
 
         file << "    constructFrom set;\n";
-        file << "    set " << patchName << ";\n";
+        file << "    set " << positionalName << ";\n";
         file << "    }\n\n";
     }
 
     file << ");\n";
     file << "\n";
     file << foamFooter();
+}
+
+// ---------------------------------------------------------------------------
+// Zone files (empty) -- required by OpenFOAM polyMesh
+// ---------------------------------------------------------------------------
+
+void FoamWriter::writeZoneFiles(const std::string& polyMeshDir)
+{
+    const char* zoneNames[] = {"cellZones", "faceZones", "pointZones"};
+    for (const char* zoneName : zoneNames)
+    {
+        std::string path = polyMeshDir + "/" + zoneName;
+        std::ofstream file(path);
+        if (!file.is_open())
+            throw std::runtime_error("Cannot open file: " + path);
+
+        file << foamHeader("regIOobject", zoneName, "constant/polyMesh") << "\n";
+        file << "0()\n";
+        file << foamFooter();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// foam.foam -- empty ParaView marker file
+// ---------------------------------------------------------------------------
+
+void FoamWriter::writeFoamFile(const std::string& caseDir)
+{
+    std::string path = caseDir + "/foam.foam";
+    std::ofstream file(path);
+    if (!file.is_open())
+        throw std::runtime_error("Cannot open file: " + path);
+    // Empty file - just create it
 }
 
 // ---------------------------------------------------------------------------

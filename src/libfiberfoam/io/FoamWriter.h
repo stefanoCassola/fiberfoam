@@ -24,6 +24,8 @@ private:
     void writeOwner(const MeshData& mesh, const std::string& polyMeshDir);
     void writeNeighbour(const MeshData& mesh, const std::string& polyMeshDir);
     void writeFaceSets(const MeshData& mesh, const std::string& polyMeshDir);
+    void writeZoneFiles(const std::string& polyMeshDir);
+    void writeFoamFile(const std::string& caseDir);
 
     void writeVelocityField(const MeshData& mesh, const std::string& caseDir);
     void writePressureField(const MeshData& mesh, const std::string& caseDir);
@@ -39,10 +41,9 @@ private:
                            const std::string& object,
                            const std::string& location = "") const;
 
-    std::string inletPatchName() const;
-    std::string outletPatchName() const;
     bool isInletPatch(const std::string& name) const;
     bool isOutletPatch(const std::string& name) const;
+    bool isWallPatch(const std::string& name) const;
 
     SimulationConfig config_;
 };

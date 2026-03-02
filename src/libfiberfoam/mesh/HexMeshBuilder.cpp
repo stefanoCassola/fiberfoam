@@ -186,6 +186,15 @@ void HexMeshBuilder::filterByConnectivity()
 // Collect all unique vertices sorted by (z, y, x). Build per-cell
 // vertex-index mapping into the global points list.
 // ---------------------------------------------------------------------------
+// Round to 15 decimal places, matching Python's round(x, 15).
+// This ensures vertices shared by adjacent cells have identical
+// floating-point representations for reliable deduplication.
+static double roundCoord(double val)
+{
+    constexpr double factor = 1e15;
+    return std::round(val * factor) / factor;
+}
+
 void HexMeshBuilder::generateCellVertices(const Point3D& center,
                                           std::array<Point3D, 8>& verts) const
 {
@@ -197,14 +206,14 @@ void HexMeshBuilder::generateCellVertices(const Point3D& center,
     //   2: (x+vs, y-vs, z+vs)   3: (x-vs, y-vs, z+vs)
     //   4: (x-vs, y+vs, z-vs)   5: (x+vs, y+vs, z-vs)
     //   6: (x+vs, y+vs, z+vs)   7: (x-vs, y+vs, z+vs)
-    verts[0] = {cx - vs, cy - vs, cz - vs};
-    verts[1] = {cx + vs, cy - vs, cz - vs};
-    verts[2] = {cx + vs, cy - vs, cz + vs};
-    verts[3] = {cx - vs, cy - vs, cz + vs};
-    verts[4] = {cx - vs, cy + vs, cz - vs};
-    verts[5] = {cx + vs, cy + vs, cz - vs};
-    verts[6] = {cx + vs, cy + vs, cz + vs};
-    verts[7] = {cx - vs, cy + vs, cz + vs};
+    verts[0] = {roundCoord(cx - vs), roundCoord(cy - vs), roundCoord(cz - vs)};
+    verts[1] = {roundCoord(cx + vs), roundCoord(cy - vs), roundCoord(cz - vs)};
+    verts[2] = {roundCoord(cx + vs), roundCoord(cy - vs), roundCoord(cz + vs)};
+    verts[3] = {roundCoord(cx - vs), roundCoord(cy - vs), roundCoord(cz + vs)};
+    verts[4] = {roundCoord(cx - vs), roundCoord(cy + vs), roundCoord(cz - vs)};
+    verts[5] = {roundCoord(cx + vs), roundCoord(cy + vs), roundCoord(cz - vs)};
+    verts[6] = {roundCoord(cx + vs), roundCoord(cy + vs), roundCoord(cz + vs)};
+    verts[7] = {roundCoord(cx - vs), roundCoord(cy + vs), roundCoord(cz + vs)};
 }
 
 void HexMeshBuilder::sortVertices(std::array<Point3D, 8>& verts) const
@@ -233,9 +242,9 @@ void HexMeshBuilder::generatePoints()
     for (const auto& [cellIdx, cellData] : mesh_.cellMap)
     {
         Point3D center;
-        center.x = cellData.coord[0] * vs + vs / 2.0;
-        center.y = cellData.coord[1] * vs + vs / 2.0;
-        center.z = cellData.coord[2] * vs + vs / 2.0;
+        center.x = roundCoord(cellData.coord[0] * vs + vs / 2.0);
+        center.y = roundCoord(cellData.coord[1] * vs + vs / 2.0);
+        center.z = roundCoord(cellData.coord[2] * vs + vs / 2.0);
 
         std::array<Point3D, 8> verts;
         generateCellVertices(center, verts);
@@ -535,80 +544,52 @@ void HexMeshBuilder::classifyBoundaryPatches()
     PatchEntry bottomPatch = classifyPatch("bottom_z", bottomBox);
     PatchEntry topPatch    = classifyPatch("top_z",    topBox);
 
-    // Remaining faces become "walls"
+    // Remaining faces become "remaining" (matching Python VoxelToFoam convention)
     PatchEntry wallsPatch;
-    wallsPatch.name = "walls";
+    wallsPatch.name = "remaining";
     wallsPatch.faceIndices.assign(remaining.begin(), remaining.end());
 
     // --- Step 5c: Rename patches based on flow direction ---
-    // Following the Python convention:
-    //   Flow X: left_x -> inlet side, right_x -> outlet side
-    //   Flow Y: front_y -> inlet side, back_y -> outlet side
-    //   Flow Z: bottom_z -> inlet side, top_z -> outlet side
+    // To match Python VoxelToFoam output (after createPatch):
+    //   - Inlet keeps its positional name (left_x, front_y, or bottom_z)
+    //   - Outlet side is renamed to "outlet"
+    //   - Walls are named "remaining"
+    //   - Cyclic patches keep positional names
     //
-    // The "inlet side" patch is renamed to the flow-low-side name,
-    // the "outlet side" to the flow-high-side name.
-    // Non-flow-direction boundary patches keep their positional names.
-    //
-    // In the Python write_data.py the naming used is simply:
-    //   inlet/outlet for the flow ends, and walls for no-slip.
-    // We store flow-end patches with their positional names so the
-    // downstream writer can map them as desired.
+    // Patch order matches Python: remaining first, then positional order
+    // (left_x, right_x, front_y, back_y, bottom_z, top_z) with the
+    // outlet-side patch renamed to "outlet".
 
-    // Build the ordered list of patches (determines face ordering in the file)
-    std::vector<PatchEntry> orderedPatches;
-
-    // Determine which patches correspond to inlet/outlet based on flow direction
-    // and label them accordingly. The Python code uses:
-    //   left_x/right_x for X flow
-    //   front_y/back_y for Y flow
-    //   bottom_z/top_z for Z flow
+    // Only rename the outlet-side patch
     switch (opts_.flowDirection)
     {
     case FlowDirection::X:
-        leftPatch.name = "inlet";
         rightPatch.name = "outlet";
-        orderedPatches.push_back(std::move(leftPatch));
-        orderedPatches.push_back(std::move(rightPatch));
-        orderedPatches.push_back(std::move(frontPatch));
-        orderedPatches.push_back(std::move(backPatch));
-        orderedPatches.push_back(std::move(bottomPatch));
-        orderedPatches.push_back(std::move(topPatch));
+        mesh_.patchPositionalNames["outlet"] = "right_x";
         break;
     case FlowDirection::Y:
-        frontPatch.name = "inlet";
         backPatch.name = "outlet";
-        orderedPatches.push_back(std::move(leftPatch));
-        orderedPatches.push_back(std::move(rightPatch));
-        orderedPatches.push_back(std::move(frontPatch));
-        orderedPatches.push_back(std::move(backPatch));
-        orderedPatches.push_back(std::move(bottomPatch));
-        orderedPatches.push_back(std::move(topPatch));
+        mesh_.patchPositionalNames["outlet"] = "back_y";
         break;
     case FlowDirection::Z:
-        bottomPatch.name = "inlet";
         topPatch.name = "outlet";
-        orderedPatches.push_back(std::move(leftPatch));
-        orderedPatches.push_back(std::move(rightPatch));
-        orderedPatches.push_back(std::move(frontPatch));
-        orderedPatches.push_back(std::move(backPatch));
-        orderedPatches.push_back(std::move(bottomPatch));
-        orderedPatches.push_back(std::move(topPatch));
+        mesh_.patchPositionalNames["outlet"] = "top_z";
         break;
     }
+
+    // Build the ordered list of patches: remaining first, then positional order
+    std::vector<PatchEntry> orderedPatches;
     orderedPatches.push_back(std::move(wallsPatch));
+    orderedPatches.push_back(std::move(leftPatch));
+    orderedPatches.push_back(std::move(rightPatch));
+    orderedPatches.push_back(std::move(frontPatch));
+    orderedPatches.push_back(std::move(backPatch));
+    orderedPatches.push_back(std::move(bottomPatch));
+    orderedPatches.push_back(std::move(topPatch));
 
     // --- Step 5d: Reorder faces: internal first, then boundary grouped by patch ---
-    // Sort each patch's boundary faces by owner cell index (matching Python
-    // reorder_boundary_patches which sorts by minimum owner).
-    for (auto& patch : orderedPatches)
-    {
-        std::sort(patch.faceIndices.begin(), patch.faceIndices.end(),
-                  [this](int a, int b)
-                  {
-                      return mesh_.owner[a] < mesh_.owner[b];
-                  });
-    }
+    // Keep boundary faces in generation order (ascending face index from set
+    // iterator), matching the Python reference which does not sort by owner.
 
     // Build new face/owner/neighbour arrays
     std::vector<FaceVertices> newFaces;

@@ -1,3 +1,4 @@
+#include <fstream>
 #include <gtest/gtest.h>
 #include "ml/OnnxPredictor.h"
 #include "ml/ModelRegistry.h"
@@ -72,8 +73,9 @@ TEST_F(OnnxPredictorTest, PredictAllWithMissingModels)
 
     VoxelArray geom = makeTestGeometry(80);
 
-    // predictAll should throw when model files are missing
-    EXPECT_THROW(predictor.predictAll(geom), std::runtime_error);
+    // predictAll skips missing models and returns empty result
+    auto results = predictor.predictAll(geom);
+    EXPECT_TRUE(results.empty());
 
     std::filesystem::remove_all(tmpDir);
 }

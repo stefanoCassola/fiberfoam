@@ -9,7 +9,7 @@ class MeshPipelineTest : public ::testing::Test
 protected:
     VoxelArray loadGeometry5x5x5()
     {
-        // Load the 5x5x5 fixture: center column (x=2) is fluid
+        // Load the 5x5x5 fixture: after C-order reordering, center column (z=2) is fluid
         // Note: fromDatFile already inverts the convention (0->1, 1->0)
         VoxelArray arr = VoxelArray::fromDatFile("fixtures/geometry_5x5x5.dat", 5);
         return arr;
@@ -35,8 +35,9 @@ TEST_F(MeshPipelineTest, LoadAndBuildMesh)
     EXPECT_EQ(geom.ny(), 5);
     EXPECT_EQ(geom.nz(), 5);
 
-    // After inversion: x=2 column is fluid (value 1), rest is solid (value 0)
-    EXPECT_EQ(geom.at(2, 0, 0), 1);
+    // After inversion and C-order reordering: z=2 column is fluid (value 1)
+    // (File has zeros at positions n%5==2, which after C-order reorder maps to z=2)
+    EXPECT_EQ(geom.at(0, 0, 2), 1);
     EXPECT_EQ(geom.at(0, 0, 0), 0);
 
     HexMeshBuilder builder(geom, defaultOpts());

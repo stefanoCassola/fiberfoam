@@ -77,11 +77,11 @@ TEST_F(PredictPipelineTest, DownsampleThenUpsamplePreservesStructure)
     EXPECT_EQ(upAgain.nz(), 5);
 
     // Structure should be roughly preserved (center column still fluid)
-    // At least the center column at x=2 should be mostly fluid
+    // At least the center column at z=2 should be mostly fluid
     int fluidCount = 0;
-    for (int z = 0; z < 5; ++z)
+    for (int x = 0; x < 5; ++x)
         for (int y = 0; y < 5; ++y)
-            if (upAgain.at(2, y, z) == 1)
+            if (upAgain.at(x, y, 2) == 1)
                 ++fluidCount;
 
     EXPECT_GT(fluidCount, 15); // Most of the 25 center cells should be fluid
@@ -108,7 +108,7 @@ TEST_F(PredictPipelineTest, FluidFractionValid)
 
     double fraction = geom.fluidFraction();
 
-    // After inversion: x=2 is fluid (25 cells out of 125)
+    // After inversion: z=2 is fluid (25 cells out of 125)
     EXPECT_NEAR(fraction, 25.0 / 125.0, 1e-10);
 }
 

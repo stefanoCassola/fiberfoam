@@ -77,7 +77,27 @@ VoxelArray VoxelArray::fromDatFile(const std::string& path, int resolution)
     }
     int nz = total / (nx * ny);
 
-    return VoxelArray(std::move(raw), nx, ny, nz);
+    // The .dat file is saved from NumPy in C-order (row-major):
+    //   flat[n] corresponds to array[n/(ny*nz), (n/nz)%ny, n%nz]
+    //   i.e. axis 0 (physical x for fdir=0) varies slowest.
+    // Our internal storage uses x-fastest (Fortran-like):
+    //   data_[x + nx*(y + ny*z)]
+    // Reorder so that at(x,y,z) = NumPy array[x,y,z] = physical (x,y,z).
+    std::vector<int8_t> reordered(total);
+    for (int ix = 0; ix < nx; ++ix)
+    {
+        for (int iy = 0; iy < ny; ++iy)
+        {
+            for (int iz = 0; iz < nz; ++iz)
+            {
+                int idxFile = ix * ny * nz + iy * nz + iz;  // C-order (file)
+                int idxMem = ix + nx * (iy + ny * iz);       // Internal x-fastest
+                reordered[idxMem] = raw[idxFile];
+            }
+        }
+    }
+
+    return VoxelArray(std::move(reordered), nx, ny, nz);
 }
 
 // ---------------------------------------------------------------------------
@@ -432,8 +452,7 @@ VoxelArray VoxelArray::resample(int targetRes) const
     // Scale factor based on the first axis (nx) -> targetRes
     double scaleX = static_cast<double>(targetRes) / static_cast<double>(nx_);
     double scaleY = static_cast<double>(targetRes) / static_cast<double>(ny_);
-    // For nz, scale proportionally to nx
-    double scaleZ = static_cast<double>(targetRes) / static_cast<double>(nx_);
+    double scaleZ = static_cast<double>(targetRes) / static_cast<double>(nz_);
 
     int newNx = targetRes;
     int newNy = std::max(1, static_cast<int>(std::round(ny_ * scaleY)));
