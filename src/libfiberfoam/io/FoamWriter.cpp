@@ -121,6 +121,7 @@ std::string FoamWriter::writeCase(const MeshData& mesh, const std::string& baseP
     writeTransportProperties(caseDir);
     writeTurbulenceProperties(caseDir);
     writeCreatePatchDict(mesh, caseDir);
+    writeBlockMeshDict(mesh, caseDir);
     writeFoamFile(caseDir);
 
     return caseDir;

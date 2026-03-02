@@ -448,7 +448,7 @@ TEST_F(FoamWriterTest, VelocityZeroFormat)
     }
 }
 
-TEST_F(FoamWriterTest, NoBlockMeshDictGenerated)
+TEST_F(FoamWriterTest, BlockMeshDictGenerated)
 {
     SimulationConfig cfg = makeConfig();
     FoamWriter writer(cfg);
@@ -458,6 +458,15 @@ TEST_F(FoamWriterTest, NoBlockMeshDictGenerated)
     std::filesystem::path blockMeshDict =
         std::filesystem::path(caseDir) / "system" / "blockMeshDict";
 
-    EXPECT_FALSE(std::filesystem::exists(blockMeshDict))
-        << "blockMeshDict should not be generated (reference case doesn't have one)";
+    EXPECT_TRUE(std::filesystem::exists(blockMeshDict))
+        << "blockMeshDict should be generated for permCalc.H buffer zone support";
+
+    std::string content = readFileContents(blockMeshDict);
+    EXPECT_NE(content.find("inlet_length"), std::string::npos);
+    EXPECT_NE(content.find("outlet_length"), std::string::npos);
+    EXPECT_NE(content.find("scale"), std::string::npos);
+
+    // Default config has no buffer layers
+    EXPECT_NE(content.find("inlet_length    0"), std::string::npos);
+    EXPECT_NE(content.find("outlet_length   0"), std::string::npos);
 }
