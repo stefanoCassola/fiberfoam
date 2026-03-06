@@ -1,8 +1,22 @@
-from fastapi import FastAPI
+import glob
+import os
+
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from routes import geometry, prediction, mesh, simulation, postprocess
-import os
+
+from routes import geometry, prediction, mesh, simulation, postprocess, pipeline, results, preprocess, filesystem
+from services.executor import job_manager
+from services.paths import (
+    MESH_BIN,
+    PREDICT_BIN,
+    SOLVER_BIN,
+    POSTPROCESS_BIN,
+    MODELS_DIR,
+    WORK_DIR,
+    UPLOAD_DIR,
+    JOBS_DIR,
+)
 
 app = FastAPI(
     title="FiberFoam",
@@ -23,13 +37,70 @@ app.include_router(prediction.router, prefix="/api/prediction", tags=["predictio
 app.include_router(mesh.router, prefix="/api/mesh", tags=["mesh"])
 app.include_router(simulation.router, prefix="/api/simulation", tags=["simulation"])
 app.include_router(postprocess.router, prefix="/api/postprocess", tags=["postprocess"])
+app.include_router(pipeline.router, prefix="/api/pipeline", tags=["pipeline"])
+app.include_router(results.router, prefix="/api/results", tags=["results"])
+app.include_router(preprocess.router, prefix="/api/preprocess", tags=["preprocess"])
+app.include_router(filesystem.router, prefix="/api/filesystem", tags=["filesystem"])
 
-# Serve static frontend files in production
-frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-if os.path.isdir(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
+
+@app.on_event("startup")
+async def startup():
+    """Create required directories and reload persisted jobs."""
+    for d in (WORK_DIR, UPLOAD_DIR, JOBS_DIR):
+        os.makedirs(d, exist_ok=True)
+    job_manager.load_persisted_jobs()
 
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "version": "0.1.0"}
+    """Health check with component availability."""
+    models = (
+        glob.glob(os.path.join(MODELS_DIR, "**/*.onnx"), recursive=True)
+        if os.path.isdir(MODELS_DIR)
+        else []
+    )
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "components": {
+            "mesh": MESH_BIN is not None,
+            "predict": PREDICT_BIN is not None,
+            "solver": SOLVER_BIN is not None,
+            "postprocess": POSTPROCESS_BIN is not None,
+        },
+        "models": [os.path.basename(m) for m in models],
+    }
+
+
+@app.get("/api/jobs/{job_id}")
+async def get_job_status(job_id: str, since: int = Query(0, ge=0)):
+    """Generic job status endpoint for any job type."""
+    job = job_manager.get_job(job_id)
+    log_lines = job_manager.get_log(job_id, since=since)
+
+    progress = None
+    if job.get("status") == "completed":
+        progress = 1.0
+
+    return {
+        "jobId": job_id,
+        "status": job.get("status", "not_found"),
+        "progress": progress,
+        "returncode": job.get("returncode"),
+        "log": log_lines,
+    }
+
+
+@app.get("/api/jobs")
+async def list_jobs():
+    """List all known jobs (in-memory + persisted)."""
+    from services import job_store
+
+    jobs = job_store.list_jobs()
+    return {"jobs": jobs}
+
+
+# Serve static frontend files in production -- MUST be last (catch-all)
+frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")

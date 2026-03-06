@@ -7,22 +7,9 @@ from fastapi import APIRouter, HTTPException, Query, WebSocket, WebSocketDisconn
 from schemas import SimulationRequest, SimulationResponse, JobStatus, JobStatusEnum
 from services.executor import job_manager
 from services.config_writer import write_simulation_config
+from services.paths import RUN_BIN, SOLVER_BIN, OPENFOAM_BASHRC
 
 router = APIRouter()
-
-_PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-
-# fiberFoamRun orchestrates the solver; fall back to direct solver invocation.
-FIBERFOAM_RUN = os.environ.get(
-    "FIBERFOAM_RUN_BIN",
-    os.path.join(_PROJECT_ROOT, "build", "bin", "fiberFoamRun"),
-)
-SOLVER_BIN_DIR = os.environ.get(
-    "FIBERFOAM_SOLVER_DIR",
-    os.path.join(_PROJECT_ROOT, "build", "bin"),
-)
 
 
 @router.post("/run", response_model=SimulationResponse)
@@ -30,9 +17,8 @@ async def run_simulation(req: SimulationRequest):
     """Launch an OpenFOAM simulation in *caseDir*.
 
     If ``fiberFoamRun`` is available it is used (it writes the config and
-    calls the solver).  Otherwise the solver executable is invoked directly
-    inside the OpenFOAM case directory (requires the case to be fully set up
-    already, e.g. after mesh generation).
+    calls the solver).  Otherwise the solver executable is invoked via
+    bash with OpenFOAM environment sourced.
     """
     if not os.path.isdir(req.caseDir):
         raise HTTPException(
@@ -49,20 +35,21 @@ async def run_simulation(req: SimulationRequest):
     )
 
     # Decide which executable to call
-    if os.path.isfile(FIBERFOAM_RUN):
-        cmd = [FIBERFOAM_RUN, config_path]
+    if RUN_BIN:
+        cmd = [RUN_BIN, "-config", config_path]
+    elif SOLVER_BIN:
+        # Run solver via bash to source OpenFOAM environment
+        solver_cmd = f"source {OPENFOAM_BASHRC} && {SOLVER_BIN} -case {req.caseDir}"
+        cmd = ["bash", "-c", solver_cmd]
     else:
-        solver_path = os.path.join(SOLVER_BIN_DIR, req.solver)
-        if not os.path.isfile(solver_path):
-            raise HTTPException(
-                status_code=500,
-                detail=f"Neither fiberFoamRun nor solver '{req.solver}' found. "
-                "Set FIBERFOAM_RUN_BIN or FIBERFOAM_SOLVER_DIR.",
-            )
-        cmd = [solver_path, "-case", req.caseDir]
+        raise HTTPException(
+            status_code=500,
+            detail="Neither fiberFoamRun nor solver found. "
+            "Set FIBERFOAM_RUN_BIN or FIBERFOAM_SOLVER_BIN.",
+        )
 
     log_path = os.path.join(req.caseDir, "log.solver")
-    job_id = await job_manager.run_command(cmd, cwd=req.caseDir)
+    job_id = await job_manager.run_command(cmd, cwd=req.caseDir, job_type="simulate")
 
     return SimulationResponse(
         jobId=job_id,

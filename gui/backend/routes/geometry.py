@@ -1,11 +1,10 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from schemas import GeometryUploadResponse
+from services.paths import UPLOAD_DIR, BATCH_DIR
 import os
 import shutil
 
 router = APIRouter()
-
-UPLOAD_DIR = os.environ.get("FIBERFOAM_UPLOAD_DIR", "/tmp/fiberfoam/uploads")
 
 
 @router.post("/upload", response_model=GeometryUploadResponse)
@@ -70,6 +69,60 @@ async def upload_geometry(file: UploadFile = File(...)):
     )
 
 
+@router.get("/voxels/{filename}")
+async def get_geometry_voxels(filename: str):
+    """Return downsampled voxel data for 3D visualization (max 64^3)."""
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    import numpy as np
+
+    try:
+        if filepath.endswith(".npy"):
+            arr = np.load(filepath)
+        else:
+            with open(filepath) as f:
+                values = f.read().split()
+            n = len(values)
+            if n == 0:
+                raise HTTPException(status_code=400, detail="Geometry file is empty")
+            res = round(n ** (1 / 3))
+            nz = n // (res * res) if res > 0 else 0
+            arr = np.array([int(v) for v in values], dtype=np.uint8).reshape(
+                res, res, nz
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to load geometry: {exc}"
+        )
+
+    # Downsample to max 64^3
+    max_dim = 64
+    if any(s > max_dim for s in arr.shape):
+        factors = tuple(max(1, s // max_dim) for s in arr.shape)
+        arr = arr[:: factors[0], :: factors[1], :: factors[2]]
+
+    # Extract surface-only voxels: solid voxels with at least one fluid neighbor
+    solid = arr > 0
+    # Pad with zeros (fluid) on all sides, then check 6-connectivity neighbors
+    padded = np.pad(solid, 1, mode="constant", constant_values=False)
+    has_fluid_neighbor = (
+        ~padded[:-2, 1:-1, 1:-1]  # -x
+        | ~padded[2:, 1:-1, 1:-1]  # +x
+        | ~padded[1:-1, :-2, 1:-1]  # -y
+        | ~padded[1:-1, 2:, 1:-1]  # +y
+        | ~padded[1:-1, 1:-1, :-2]  # -z
+        | ~padded[1:-1, 1:-1, 2:]  # +z
+    )
+    surface = solid & has_fluid_neighbor
+    positions = np.argwhere(surface).tolist()
+
+    return {"positions": positions, "dimensions": list(arr.shape)}
+
+
 @router.get("/list")
 async def list_geometries():
     """Return a list of previously uploaded geometry files."""
@@ -79,6 +132,17 @@ async def list_geometries():
         f for f in os.listdir(UPLOAD_DIR) if f.endswith((".dat", ".npy"))
     )
     return {"files": files}
+
+
+@router.get("/batch-files")
+async def list_batch_files():
+    """Return a list of geometry files available in the batch input directory."""
+    if not os.path.isdir(BATCH_DIR):
+        return {"files": [], "batchDir": BATCH_DIR}
+    files = sorted(
+        f for f in os.listdir(BATCH_DIR) if f.endswith((".dat", ".npy"))
+    )
+    return {"files": files, "batchDir": BATCH_DIR}
 
 
 @router.delete("/{filename}")

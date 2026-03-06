@@ -5,7 +5,8 @@ interface PermeabilityTableProps {
   loading?: boolean
 }
 
-function formatScientific(value: number): string {
+function formatScientific(value: number | undefined): string {
+  if (value === undefined || value === null) return '-'
   if (value === 0) return '0'
   return value.toExponential(4)
 }
@@ -47,12 +48,12 @@ export default function PermeabilityTable({
             <tr className="text-left border-b border-gray-700">
               <th className="pb-3 pr-4 text-gray-400 font-medium">Direction</th>
               <th className="pb-3 pr-4 text-gray-400 font-medium">
-                Darcy Method
+                Vol. Avg. Permeability
               </th>
               <th className="pb-3 pr-4 text-gray-400 font-medium">
-                Pressure Drop Method
+                Flow Rate Permeability
               </th>
-              <th className="pb-3 text-gray-400 font-medium">Unit</th>
+              <th className="pb-3 text-gray-400 font-medium">Fiber Vol. Content</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -67,12 +68,16 @@ export default function PermeabilityTable({
                   </span>
                 </td>
                 <td className="py-3 pr-4 font-mono text-gray-200">
-                  {formatScientific(row.darcyMethod)}
+                  {formatScientific(row.permVolAvgMain)}
                 </td>
                 <td className="py-3 pr-4 font-mono text-gray-200">
-                  {formatScientific(row.pressureDropMethod)}
+                  {formatScientific(row.permFlowRate)}
                 </td>
-                <td className="py-3 text-gray-400">{row.unit}</td>
+                <td className="py-3 font-mono text-gray-400">
+                  {row.fiberVolumeContent !== undefined
+                    ? `${(row.fiberVolumeContent * 100).toFixed(2)}%`
+                    : '-'}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -84,18 +89,18 @@ export default function PermeabilityTable({
         <div className="mt-4 pt-4 border-t border-gray-700">
           <div className="flex items-center gap-6 text-xs text-gray-500">
             <span>
-              Average (Darcy):{' '}
+              Average (Vol. Avg.):{' '}
               <span className="font-mono text-gray-300">
                 {formatScientific(
-                  results.reduce((s, r) => s + r.darcyMethod, 0) / results.length,
+                  results.reduce((s, r) => s + (r.permVolAvgMain ?? 0), 0) / results.length,
                 )}
               </span>
             </span>
             <span>
-              Average (Pressure Drop):{' '}
+              Average (Flow Rate):{' '}
               <span className="font-mono text-gray-300">
                 {formatScientific(
-                  results.reduce((s, r) => s + r.pressureDropMethod, 0) /
+                  results.reduce((s, r) => s + (r.permFlowRate ?? 0), 0) /
                     results.length,
                 )}
               </span>

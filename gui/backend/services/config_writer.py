@@ -49,19 +49,33 @@ def write_prediction_config(
     output_path: str,
     *,
     input_path: str,
+    voxel_size: float = 0.5e-6,
     voxel_resolution: int = 320,
     model_resolution: int = 80,
     models_dir: str = "",
     flow_directions: Optional[list[str]] = None,
+    inlet_buffer: int = 0,
+    outlet_buffer: int = 0,
+    connectivity: bool = True,
 ) -> str:
     """Write a YAML config suitable for ``fiberFoamPredict``."""
     cfg = {
         "geometry": {
             "input": input_path,
             "voxelResolution": voxel_resolution,
+            "voxelSize": voxel_size,
         },
         "flow": {
             "directions": flow_directions or ["x"],
+        },
+        "bufferZones": {
+            "inletLayers": inlet_buffer,
+            "outletLayers": outlet_buffer,
+        },
+        "mesh": {
+            "connectivityCheck": connectivity,
+            "autoBoundaryFaceSets": True,
+            "periodic": False,
         },
         "prediction": {
             "enabled": True,
@@ -83,8 +97,8 @@ def write_simulation_config(
     *,
     case_dir: str,
     solver: str = "simpleFoamMod",
-    max_iterations: int = 1000000,
-    write_interval: int = 50000,
+    max_iterations: int = 10000,
+    write_interval: int = 10000,
 ) -> str:
     """Write a YAML config suitable for ``fiberFoamRun`` / solver."""
     cfg = {
