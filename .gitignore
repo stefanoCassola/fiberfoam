@@ -31,6 +31,15 @@ dist/
 *.sif
 *.dat
 !tests/fixtures/*.dat
+FiberGeo_*/
+scaling_factors.json
+!/models/scaling_factors.json
+
+# Docker runtime
+docker/output/
+
+# External dependencies
+external/
 
 # OS
 .DS_Store

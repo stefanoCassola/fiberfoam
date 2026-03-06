@@ -12,16 +12,9 @@ from schemas import (
 )
 from services.executor import job_manager
 from services.config_writer import write_postprocess_config
+from services.paths import POSTPROCESS_BIN
 
 router = APIRouter()
-
-_PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-FIBERFOAM_POSTPROCESS = os.environ.get(
-    "FIBERFOAM_POSTPROCESS_BIN",
-    os.path.join(_PROJECT_ROOT, "build", "bin", "fiberFoamPostProcess"),
-)
 
 
 @router.post("/run", response_model=PostProcessResponse)
@@ -45,16 +38,15 @@ async def run_postprocess(req: PostProcessRequest):
         fibrous_region_only=req.fibrousRegionOnly,
     )
 
-    if not os.path.isfile(FIBERFOAM_POSTPROCESS):
+    if not POSTPROCESS_BIN:
         raise HTTPException(
             status_code=500,
-            detail=f"fiberFoamPostProcess executable not found at "
-            f"{FIBERFOAM_POSTPROCESS}. "
+            detail="fiberFoamPostProcess executable not found. "
             "Set FIBERFOAM_POSTPROCESS_BIN environment variable.",
         )
 
-    cmd = [FIBERFOAM_POSTPROCESS, config_path]
-    job_id = await job_manager.run_command(cmd, cwd=req.caseDir)
+    cmd = [POSTPROCESS_BIN, "-config", config_path]
+    job_id = await job_manager.run_command(cmd, cwd=req.caseDir, job_type="postprocess")
 
     return PostProcessResponse(jobId=job_id, caseDir=req.caseDir)
 

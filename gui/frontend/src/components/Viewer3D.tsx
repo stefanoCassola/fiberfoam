@@ -1,5 +1,5 @@
-import { useRef, useMemo, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useRef, useMemo, useState, useEffect } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import * as THREE from 'three'
 
@@ -7,126 +7,106 @@ import * as THREE from 'three'
 // Types
 // ---------------------------------------------------------------------------
 export interface VoxelData {
-  /** 3D boolean/numeric array: voxels[x][y][z]. Truthy = solid. */
-  voxels: number[][][]
+  /** Sparse list of [x, y, z] positions for surface voxels. */
+  positions: number[][]
   dimensions: [number, number, number]
-}
-
-export interface MeshData {
-  vertices: number[][]
-  faces: number[][]
 }
 
 interface Viewer3DProps {
   voxelData?: VoxelData | null
-  meshData?: MeshData | null
   colorSolid?: string
-  colorWireframe?: string
-  showWireframe?: boolean
 }
 
 // ---------------------------------------------------------------------------
-// VoxelInstances -- renders solid voxels via InstancedMesh
+// Build a single BufferGeometry from surface voxels.
+// Only emits quads for faces adjacent to empty space — far fewer triangles
+// than rendering a full box per voxel.
 // ---------------------------------------------------------------------------
-function VoxelInstances({
-  voxelData,
-  colorSolid,
-}: {
-  voxelData: VoxelData
-  colorSolid: string
-}) {
-  const meshRef = useRef<THREE.InstancedMesh>(null!)
-  const dummy = useMemo(() => new THREE.Object3D(), [])
+function buildSurfaceGeometry(data: VoxelData): THREE.BufferGeometry {
+  const { positions, dimensions } = data
+  const [nx, ny, nz] = dimensions
+  const ox = nx / 2, oy = ny / 2, oz = nz / 2
 
-  const { matrices, count } = useMemo(() => {
-    const mats: THREE.Matrix4[] = []
-    const [nx, ny, nz] = voxelData.dimensions
-    const offsetX = nx / 2
-    const offsetY = ny / 2
-    const offsetZ = nz / 2
+  // Build a Set for O(1) occupancy lookup
+  const key = (x: number, y: number, z: number) => `${x},${y},${z}`
+  const occupied = new Set<string>()
+  for (const p of positions) occupied.add(key(p[0], p[1], p[2]))
 
-    for (let x = 0; x < nx; x++) {
-      for (let y = 0; y < ny; y++) {
-        for (let z = 0; z < nz; z++) {
-          if (voxelData.voxels[x]?.[y]?.[z]) {
-            dummy.position.set(x - offsetX, y - offsetY, z - offsetZ)
-            dummy.updateMatrix()
-            mats.push(dummy.matrix.clone())
-          }
-        }
+  // 6 face directions: [dx,dy,dz] and the 4 corner offsets for each quad
+  const faces: { dir: number[]; corners: number[][] }[] = [
+    { dir: [1, 0, 0], corners: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]] },  // +x
+    { dir: [-1,0,0], corners: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]] },   // -x
+    { dir: [0, 1, 0], corners: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },  // +y
+    { dir: [0,-1,0], corners: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },   // -y
+    { dir: [0, 0, 1], corners: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },  // +z
+    { dir: [0, 0,-1], corners: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] },  // -z
+  ]
+
+  const verts: number[] = []
+  const normals: number[] = []
+  const indices: number[] = []
+
+  for (const p of positions) {
+    const [x, y, z] = p
+    for (const { dir, corners } of faces) {
+      const nx2 = x + dir[0], ny2 = y + dir[1], nz2 = z + dir[2]
+      if (occupied.has(key(nx2, ny2, nz2))) continue // neighbor exists, skip face
+
+      const base = verts.length / 3
+      for (const c of corners) {
+        verts.push(x + c[0] - ox, y + c[1] - oy, z + c[2] - oz)
+        normals.push(dir[0], dir[1], dir[2])
       }
+      indices.push(base, base + 1, base + 2, base, base + 2, base + 3)
     }
-    return { matrices: mats, count: mats.length }
-  }, [voxelData, dummy])
+  }
 
-  // Apply matrices to instanced mesh
-  useMemo(() => {
-    if (!meshRef.current) return
-    matrices.forEach((mat, i) => {
-      meshRef.current.setMatrixAt(i, mat)
-    })
-    meshRef.current.instanceMatrix.needsUpdate = true
-  }, [matrices])
-
-  if (count === 0) return null
-
-  return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
-      <boxGeometry args={[0.95, 0.95, 0.95]} />
-      <meshStandardMaterial color={colorSolid} transparent opacity={0.85} />
-    </instancedMesh>
-  )
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3))
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geo.setIndex(indices)
+  return geo
 }
 
 // ---------------------------------------------------------------------------
-// WireframeMesh -- renders mesh data as wireframe
+// Auto-fit camera to geometry bounds
 // ---------------------------------------------------------------------------
-function WireframeMesh({
-  meshData,
-  color,
-}: {
-  meshData: MeshData
-  color: string
-}) {
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry()
-    const vertices = new Float32Array(meshData.vertices.flat())
-    geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
+function CameraFit({ dimensions }: { dimensions: [number, number, number] }) {
+  const { camera } = useThree()
+  const fitted = useRef(false)
+  const prevDims = useRef('')
 
-    if (meshData.faces.length > 0) {
-      const indices: number[] = []
-      for (const face of meshData.faces) {
-        if (face.length === 3) {
-          indices.push(face[0], face[1], face[2])
-        } else if (face.length === 4) {
-          indices.push(face[0], face[1], face[2])
-          indices.push(face[0], face[2], face[3])
-        }
-      }
-      geo.setIndex(indices)
-    }
-    geo.computeVertexNormals()
-    return geo
-  }, [meshData])
+  useEffect(() => {
+    const dimKey = dimensions.join(',')
+    if (fitted.current && dimKey === prevDims.current) return
+    prevDims.current = dimKey
+
+    const maxDim = Math.max(...dimensions)
+    const dist = maxDim * 1.4
+    camera.position.set(dist * 0.7, dist * 0.5, dist * 0.7)
+    camera.lookAt(0, 0, 0)
+    camera.updateProjectionMatrix()
+    fitted.current = true
+  }, [dimensions, camera])
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// VoxelSurface — single draw-call mesh
+// ---------------------------------------------------------------------------
+function VoxelSurface({ voxelData, color }: { voxelData: VoxelData; color: string }) {
+  const geometry = useMemo(() => buildSurfaceGeometry(voxelData), [voxelData])
+
+  useEffect(() => {
+    return () => { geometry.dispose() }
+  }, [geometry])
 
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial color={color} wireframe transparent opacity={0.6} />
+      <meshStandardMaterial color={color} />
     </mesh>
   )
-}
-
-// ---------------------------------------------------------------------------
-// Slow rotation wrapper
-// ---------------------------------------------------------------------------
-function RotatingGroup({ children, enabled }: { children: React.ReactNode; enabled: boolean }) {
-  const ref = useRef<THREE.Group>(null!)
-  useFrame((_state, delta) => {
-    if (enabled && ref.current) {
-      ref.current.rotation.y += delta * 0.15
-    }
-  })
-  return <group ref={ref}>{children}</group>
 }
 
 // ---------------------------------------------------------------------------
@@ -134,14 +114,10 @@ function RotatingGroup({ children, enabled }: { children: React.ReactNode; enabl
 // ---------------------------------------------------------------------------
 export default function Viewer3D({
   voxelData,
-  meshData,
   colorSolid = '#3b82f6',
-  colorWireframe = '#60a5fa',
-  showWireframe = false,
 }: Viewer3DProps) {
-  const [autoRotate, setAutoRotate] = useState(false)
-
-  const hasContent = !!(voxelData || meshData)
+  const [autoRotate, setAutoRotate] = useState(true)
+  const hasContent = !!voxelData
 
   return (
     <div className="relative w-full h-full min-h-[400px] rounded-xl overflow-hidden border border-gray-700 bg-gray-950">
@@ -171,25 +147,30 @@ export default function Viewer3D({
       )}
 
       <Canvas
-        camera={{ position: [30, 20, 30], fov: 50, near: 0.1, far: 1000 }}
+        camera={{ fov: 45, near: 0.1, far: 5000 }}
         gl={{ antialias: true }}
       >
         <color attach="background" args={['#0a0e1a']} />
-        <ambientLight intensity={0.4} />
+        <ambientLight intensity={0.5} />
         <directionalLight position={[10, 10, 10]} intensity={0.8} />
         <directionalLight position={[-10, -5, -10]} intensity={0.3} />
 
-        <RotatingGroup enabled={autoRotate}>
-          {voxelData && !showWireframe && (
-            <VoxelInstances voxelData={voxelData} colorSolid={colorSolid} />
-          )}
-          {meshData && (
-            <WireframeMesh meshData={meshData} color={colorWireframe} />
-          )}
-        </RotatingGroup>
+        {voxelData && (
+          <>
+            <CameraFit dimensions={voxelData.dimensions} />
+            <VoxelSurface voxelData={voxelData} color={colorSolid} />
+          </>
+        )}
 
-        <gridHelper args={[50, 50, '#1e293b', '#1e293b']} />
-        <OrbitControls makeDefault enableDamping dampingFactor={0.1} />
+        <OrbitControls
+          makeDefault
+          enableDamping
+          dampingFactor={0.15}
+          autoRotate={autoRotate}
+          autoRotateSpeed={1.5}
+          minDistance={1}
+          maxDistance={3000}
+        />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
           <GizmoViewport labelColor="white" axisHeadScale={0.8} />
         </GizmoHelper>

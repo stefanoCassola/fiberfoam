@@ -2,22 +2,11 @@ from fastapi import APIRouter, HTTPException, Query
 from schemas import MeshRequest, MeshResponse, JobStatus, JobStatusEnum
 from services.executor import job_manager
 from services.config_writer import write_mesh_config
+from services.paths import MESH_BIN, WORK_DIR, UPLOAD_DIR
 import os
 import re
 
 router = APIRouter()
-
-# Resolve path to the fiberFoamMesh executable.  The user can override via
-# environment variable; otherwise we look relative to the project root.
-_PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-FIBERFOAM_MESH = os.environ.get(
-    "FIBERFOAM_MESH_BIN",
-    os.path.join(_PROJECT_ROOT, "build", "bin", "fiberFoamMesh"),
-)
-
-WORK_DIR = os.environ.get("FIBERFOAM_WORK_DIR", "/tmp/fiberfoam/cases")
 
 
 @router.post("/generate", response_model=MeshResponse)
@@ -27,6 +16,9 @@ async def generate_mesh(req: MeshRequest):
     Writes a temporary YAML config and invokes ``fiberFoamMesh``.
     Returns immediately with a *jobId* for progress tracking.
     """
+    if not os.path.isabs(req.inputPath):
+        req.inputPath = os.path.join(UPLOAD_DIR, req.inputPath)
+
     if not os.path.isfile(req.inputPath):
         raise HTTPException(
             status_code=400, detail=f"Input geometry not found: {req.inputPath}"
@@ -52,15 +44,15 @@ async def generate_mesh(req: MeshRequest):
         connectivity=req.connectivity,
     )
 
-    if not os.path.isfile(FIBERFOAM_MESH):
+    if not MESH_BIN:
         raise HTTPException(
             status_code=500,
-            detail=f"fiberFoamMesh executable not found at {FIBERFOAM_MESH}. "
+            detail="fiberFoamMesh executable not found. "
             "Set FIBERFOAM_MESH_BIN environment variable.",
         )
 
-    cmd = [FIBERFOAM_MESH, config_path]
-    job_id = await job_manager.run_command(cmd, cwd=case_dir)
+    cmd = [MESH_BIN, "-config", config_path]
+    job_id = await job_manager.run_command(cmd, cwd=case_dir, job_type="mesh")
 
     return MeshResponse(jobId=job_id, caseDir=case_dir)
 

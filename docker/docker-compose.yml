@@ -1,19 +1,35 @@
-version: '3.8'
-
 services:
-  gui:
+  fiberfoam:
     build:
       context: ..
       dockerfile: docker/Dockerfile
     ports:
-      - "3000:8000"
+      - "${FIBERFOAM_PORT:-3000}:8000"
     volumes:
-      - fiberfoam-data:/data
-      - ./models:/app/models
+      - ${FIBERFOAM_OUTPUT_DIR:-./output}:/data/cases
+      - ${FIBERFOAM_INPUT_DIR:-./input}:/data/input:ro
+      - ${FIBERFOAM_BROWSE_ROOT:-$HOME}:/host
+      - fiberfoam-uploads:/data/uploads
+      - fiberfoam-jobs:/data/jobs
     environment:
       - FIBERFOAM_UPLOAD_DIR=/data/uploads
       - FIBERFOAM_MODELS_DIR=/app/models
+      - FIBERFOAM_WORK_DIR=/data/cases
+      - FIBERFOAM_BATCH_DIR=/data/input
+      - FIBERFOAM_SCALING_FACTORS=/app/models/scaling_factors.json
+      - FIBERFOAM_OUTPUT_ROOT=/host
+      - HOST_UID=${HOST_UID:-0}
+      - HOST_GID=${HOST_GID:-0}
+    # No memory limit — uses all available host memory.
+    # Override with: deploy.resources.limits.memory in docker-compose.override.yml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:
-  fiberfoam-data:
+  fiberfoam-uploads:
+  fiberfoam-jobs:

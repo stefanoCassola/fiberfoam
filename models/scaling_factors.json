@@ -1,0 +1,81 @@
+{
+    "res80": [
+		{	"x": 
+			{
+				"mean_vel": 1.0036958281669491e-07,
+				"standard deviation": 1.0848897102595849e-07,
+				"max velocity": 1.0555797888840423e-05,
+				"min velocity": -2.739641843375979e-06
+			}
+		},
+		{	"y":
+			{
+				"mean_vel": 2.146497247080857e-08,
+				"standard deviation": 2.9533504656125574e-08,
+				"max velocity": 2.8334309550529396e-06,
+				"min velocity": -8.695726521724262e-07
+			}
+		},
+		{	"z":
+			{
+				"mean_vel": 6.289618995409993e-09,
+				"standard deviation": 6.378448990874551e-09,
+				"max velocity": 1.5022073497650519e-06,
+				"min velocity": -2.2752034397745293e-07
+			}
+		}
+		],
+	"res160": [
+		{	"x": 
+			{
+				"mean_vel": 1.1704591920310432e-07,
+				"standard deviation": 1.1392348618303183e-07,
+				"max velocity": 1.1871701973485691e-05,
+				"min velocity": -2.283122152071222e-06
+			}
+		},
+		{	"y":
+			{
+				"mean_vel": 1.9839112686049825e-08,
+				"standard deviation": 2.5685938164347843e-08,
+				"max velocity": 1.4564925347885e-06,
+				"min velocity": -7.958744060425101e-07
+			}
+		},
+		{	"z":
+			{
+				"mean_vel": 5.297683336402314e-09,
+				"standard deviation": 5.857394931969518e-09,
+				"max velocity": 1.76946492991e-06,
+				"min velocity": -3.4661593355898714e-07
+			}
+		}
+		],
+	"res320": [
+		{	"x": 
+			{
+				"mean_vel": 2.2129466531391054e-07,
+				"standard deviation": 1.8299917763553622e-07,
+				"max velocity": 1.1778388948670036e-05,
+				"min velocity": -1.1217558626053492e-06
+			}
+		},
+		{	"y":
+			{
+				"mean_vel": 3.797244464409608e-08,
+				"standard deviation": 3.847572675705796e-08,
+				"max velocity": 1.9748083007e-06,
+				"min velocity": -7.022662073728454e-07
+			}
+		},
+		{	"z":
+			{
+				"mean_vel": 1.1409306717015082e-08,
+				"standard deviation": 1.0449177232797888e-08,
+				"max velocity": 1.63927159215e-06,
+				"min velocity": -5.454496354765946e-07
+			}
+		}
+		]
+  
+}

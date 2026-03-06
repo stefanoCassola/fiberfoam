@@ -103,6 +103,25 @@ int main(int argc, char *argv[])
 
     // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+    // Print permeability-based convergence info (custom simpleFoamMod feature)
+    {
+        const dictionary& simpleDict = fvSolution.subDict("SIMPLE");
+        if (simpleDict.found("permeabilityControl"))
+        {
+            const dictionary& permCtrl = simpleDict.subDict("permeabilityControl");
+            if (permCtrl.getOrDefault<bool>("convPermeability", false))
+            {
+                scalar slope = permCtrl.get<scalar>("convSlope");
+                scalar window = permCtrl.get<scalar>("convWindow");
+                scalar errBound = permCtrl.get<scalar>("errorBound");
+                Info<< "\nPermeability-based convergence criteria active:\n"
+                    << "    window    = " << window << " iterations\n"
+                    << "    slope     < " << slope << "\n"
+                    << "    errorBound < " << errBound << "\n" << endl;
+            }
+        }
+    }
+
     Info<< "\nStarting time loop\n" << endl;
 
     while (simple.loop())

@@ -3,24 +3,18 @@ from schemas import (
     PredictionRequest,
     PredictionResponse,
     DirectionPrediction,
+    QuickPredictionRequest,
+    QuickPredictionResponse,
+    QuickPredictionData,
     JobStatus,
     JobStatusEnum,
 )
 from services.executor import job_manager
 from services.config_writer import write_prediction_config
+from services.paths import PREDICT_BIN, WORK_DIR, MODELS_DIR, UPLOAD_DIR
 import os
 
 router = APIRouter()
-
-_PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..")
-)
-FIBERFOAM_PREDICT = os.environ.get(
-    "FIBERFOAM_PREDICT_BIN",
-    os.path.join(_PROJECT_ROOT, "build", "bin", "fiberFoamPredict"),
-)
-
-WORK_DIR = os.environ.get("FIBERFOAM_WORK_DIR", "/tmp/fiberfoam/cases")
 
 
 @router.post("/run", response_model=PredictionResponse)
@@ -30,6 +24,9 @@ async def run_prediction(req: PredictionRequest):
     Writes a YAML config and invokes ``fiberFoamPredict``.
     Returns immediately with a *jobId* for progress tracking.
     """
+    if not os.path.isabs(req.inputPath):
+        req.inputPath = os.path.join(UPLOAD_DIR, req.inputPath)
+
     if not os.path.isfile(req.inputPath):
         raise HTTPException(
             status_code=400, detail=f"Input geometry not found: {req.inputPath}"
@@ -41,25 +38,28 @@ async def run_prediction(req: PredictionRequest):
 
     directions = [d.value for d in req.flowDirections]
 
+    # Use centralized MODELS_DIR if the request doesn't specify one
+    models_dir = req.modelsDir if req.modelsDir else MODELS_DIR
+
     config_path = os.path.join(output_dir, "fiberfoam_predict.yaml")
     write_prediction_config(
         config_path,
         input_path=req.inputPath,
         voxel_resolution=req.voxelRes,
         model_resolution=req.modelRes,
-        models_dir=req.modelsDir,
+        models_dir=models_dir,
         flow_directions=directions,
     )
 
-    if not os.path.isfile(FIBERFOAM_PREDICT):
+    if not PREDICT_BIN:
         raise HTTPException(
             status_code=500,
-            detail=f"fiberFoamPredict executable not found at {FIBERFOAM_PREDICT}. "
+            detail="fiberFoamPredict executable not found. "
             "Set FIBERFOAM_PREDICT_BIN environment variable.",
         )
 
-    cmd = [FIBERFOAM_PREDICT, config_path]
-    job_id = await job_manager.run_command(cmd, cwd=output_dir)
+    cmd = [PREDICT_BIN, "-config", config_path]
+    job_id = await job_manager.run_command(cmd, cwd=output_dir, job_type="predict")
 
     # Build expected output files (one per direction)
     dir_predictions = [
@@ -115,3 +115,98 @@ async def cancel_prediction(job_id: str):
             status_code=400, detail="Job not found or not running"
         )
     return {"jobId": job_id, "status": "cancelled"}
+
+
+@router.post("/quick", response_model=QuickPredictionResponse)
+async def quick_prediction(req: QuickPredictionRequest):
+    """Run pure-Python ONNX prediction + Darcy permeability (no C++ needed).
+
+    Returns permeability results directly — fast enough for synchronous use.
+    """
+    from services.predictor import predict_permeability
+
+    if not os.path.isabs(req.inputPath):
+        req.inputPath = os.path.join(UPLOAD_DIR, req.inputPath)
+
+    if not os.path.isfile(req.inputPath):
+        raise HTTPException(
+            status_code=400, detail=f"Input geometry not found: {req.inputPath}"
+        )
+
+    directions = [d.value for d in req.flowDirections]
+
+    try:
+        results = predict_permeability(
+            geometry_path=req.inputPath,
+            directions=directions,
+            voxel_size=req.voxelSize,
+            voxel_res=req.voxelRes,
+            model_res=req.modelRes,
+            inlet_buffer=req.inletBuffer,
+            outlet_buffer=req.outletBuffer,
+            nu=req.viscosity,
+            density=req.density,
+            delta_p=req.deltaP,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}")
+
+    return QuickPredictionResponse(
+        results=[
+            QuickPredictionData(
+                direction=r.direction,
+                permeability=r.permeability,
+                fiberVolumeContent=r.fiberVolumeContent,
+                meanVelocity=r.meanVelocity,
+                flowLength=r.flowLength,
+            )
+            for r in results
+        ]
+    )
+
+
+@router.get("/models")
+async def list_models():
+    """Scan MODELS_DIR for available model sets, grouped by resolution.
+
+    Returns a list of model sets, each with resolution, folder name,
+    and available directions.  The frontend uses this to populate the
+    model selector dropdown.
+    """
+    import glob as _glob
+    import re as _re
+    from collections import defaultdict
+
+    if not os.path.isdir(MODELS_DIR):
+        return {"models": [], "modelSets": [], "modelsDir": MODELS_DIR}
+
+    all_files = sorted(
+        os.path.relpath(p, MODELS_DIR)
+        for p in _glob.glob(os.path.join(MODELS_DIR, "**/*.onnx"), recursive=True)
+    )
+
+    # Group by parent folder (e.g. "res80")
+    sets: dict[str, list[str]] = defaultdict(list)
+    for f in all_files:
+        parts = f.split("/")
+        folder = parts[0] if len(parts) > 1 else ""
+        basename = parts[-1]
+        # Extract direction from filename like "x_80.onnx"
+        m = _re.match(r"([xyz])_\d+\.onnx$", basename)
+        if m:
+            sets[folder].append(m.group(1))
+
+    model_sets = []
+    for folder, directions in sorted(sets.items()):
+        # Extract resolution from folder name like "res80"
+        m = _re.match(r"res(\d+)", folder)
+        resolution = int(m.group(1)) if m else 0
+        model_sets.append({
+            "folder": folder,
+            "resolution": resolution,
+            "directions": sorted(directions),
+        })
+
+    return {"models": all_files, "modelSets": model_sets, "modelsDir": MODELS_DIR}
