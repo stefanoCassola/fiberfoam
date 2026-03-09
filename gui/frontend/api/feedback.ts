@@ -1,24 +1,29 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { IncomingMessage, ServerResponse } from 'http'
 
 const GITHUB_REPO = 'stefanoCassola/fiberfoam'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: IncomingMessage, res: ServerResponse) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-  if (req.method === 'OPTIONS') return res.status(200).end()
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+  if (req.method === 'OPTIONS') { res.statusCode = 200; res.end(); return }
+  if (req.method !== 'POST') { res.statusCode = 405; res.end(JSON.stringify({ error: 'Method not allowed' })); return }
 
   const token = process.env.GITHUB_TOKEN
-  if (!token) return res.status(500).json({ error: 'GITHUB_TOKEN not configured' })
+  if (!token) { res.statusCode = 500; res.end(JSON.stringify({ error: 'GITHUB_TOKEN not configured' })); return }
 
-  const { category = 'General', message, contact = '' } = req.body || {}
+  // Parse body
+  const chunks: Buffer[] = []
+  for await (const chunk of req) chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  let body: any
+  try { body = JSON.parse(Buffer.concat(chunks).toString()) } catch { body = {} }
+
+  const { category = 'General', message, contact = '' } = body
   if (!message || typeof message !== 'string' || !message.trim()) {
-    return res.status(400).json({ error: 'Message is required' })
+    res.statusCode = 400; res.end(JSON.stringify({ error: 'Message is required' })); return
   }
 
-  // Map category to GitHub label
   const labelMap: Record<string, string> = {
     'Bug Report': 'bug',
     'Feature Request': 'enhancement',
@@ -27,8 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const label = labelMap[category] || 'feedback'
 
-  // Build issue body
-  const body = [
+  const issueBody = [
     `**Category:** ${category}`,
     '',
     `**Message:**`,
@@ -47,24 +51,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         Authorization: `token ${token}`,
         Accept: 'application/vnd.github.v3+json',
         'Content-Type': 'application/json',
+        'User-Agent': 'FiberFoam-Feedback',
       },
       body: JSON.stringify({
         title: `[Feedback] ${category}: ${message.trim().slice(0, 80)}`,
-        body,
+        body: issueBody,
         labels: [label],
       }),
     })
 
     if (!ghRes.ok) {
       const err = await ghRes.text()
-      console.error('GitHub API error:', err)
-      return res.status(502).json({ error: 'Failed to create GitHub issue' })
+      console.error('GitHub API error:', ghRes.status, err)
+      res.statusCode = 502; res.end(JSON.stringify({ error: 'Failed to create GitHub issue', detail: err })); return
     }
 
-    const issue = await ghRes.json()
-    return res.status(200).json({ status: 'ok', issueUrl: issue.html_url })
+    const issue = await ghRes.json() as any
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ status: 'ok', issueUrl: issue.html_url }))
   } catch (err) {
     console.error('Error creating issue:', err)
-    return res.status(500).json({ error: 'Internal error' })
+    res.statusCode = 500; res.end(JSON.stringify({ error: 'Internal error' })); return
   }
 }
