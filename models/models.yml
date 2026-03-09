@@ -1,14 +1,43 @@
 # FiberFoam model registry
 models:
+  # 3D U-Net models (ONNX, ~1.4M parameters each)
   - resolution: 80
     direction: x
     path: res80/x_80.onnx
+    architecture: "3D U-Net"
+    parameters: 1414723
     description: "X-direction velocity prediction at 80^3 resolution"
   - resolution: 80
     direction: y
     path: res80/y_80.onnx
+    architecture: "3D U-Net"
+    parameters: 1414723
     description: "Y-direction velocity prediction at 80^3 resolution"
   - resolution: 80
     direction: z
     path: res80/z_80.onnx
+    architecture: "3D U-Net"
+    parameters: 1414723
     description: "Z-direction velocity prediction at 80^3 resolution"
+  # FNO models (TF SavedModel, ~28.3M parameters each)
+  - resolution: 80
+    direction: x
+    path: res80_fno/x_80_tf
+    format: tensorflow
+    architecture: "FNO (Fourier Neural Operator)"
+    parameters: 28312777
+    description: "X-direction velocity prediction at 80^3 resolution (FNO)"
+  - resolution: 80
+    direction: y
+    path: res80_fno/y_80_tf
+    format: tensorflow
+    architecture: "FNO (Fourier Neural Operator)"
+    parameters: 28312777
+    description: "Y-direction velocity prediction at 80^3 resolution (FNO)"
+  - resolution: 80
+    direction: z
+    path: res80_fno/z_80_tf
+    format: tensorflow
+    architecture: "FNO (Fourier Neural Operator)"
+    parameters: 28312777
+    description: "Z-direction velocity prediction at 80^3 resolution (FNO)"

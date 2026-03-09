@@ -106,8 +106,8 @@ COPY scaling_factors.json /app/models/scaling_factors.json
 WORKDIR /app/backend
 COPY gui/backend/ ./
 
-RUN pip3 install --no-cache-dir numpy scipy aiofiles onnxruntime -r requirements.txt 2>/dev/null \
-    || pip3 install --no-cache-dir numpy scipy aiofiles onnxruntime \
+RUN pip3 install --no-cache-dir numpy scipy aiofiles onnxruntime tensorflow-cpu -r requirements.txt 2>/dev/null \
+    || pip3 install --no-cache-dir numpy scipy aiofiles onnxruntime tensorflow-cpu \
     || echo "pip install failed; skipping"
 
 # Create data directories

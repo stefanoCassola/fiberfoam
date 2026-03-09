@@ -522,6 +522,7 @@ async def _run_quick_predict_step(
                 voxel_size=req.voxelSize,
                 voxel_res=req.voxelRes,
                 model_res=req.modelRes,
+                model_folder=req.modelFolder,
                 inlet_buffer=req.inletBuffer,
                 outlet_buffer=req.outletBuffer,
                 nu=req.viscosity,

@@ -182,6 +182,7 @@ async def list_models():
     if not os.path.isdir(MODELS_DIR):
         return {"models": [], "modelSets": [], "modelsDir": MODELS_DIR}
 
+    # Find ONNX files
     all_files = sorted(
         os.path.relpath(p, MODELS_DIR)
         for p in _glob.glob(os.path.join(MODELS_DIR, "**/*.onnx"), recursive=True)
@@ -198,15 +199,29 @@ async def list_models():
         if m:
             sets[folder].append(m.group(1))
 
+    # Also find TF SavedModel directories (e.g. "x_80_tf/saved_model.pb")
+    for tf_pb in _glob.glob(os.path.join(MODELS_DIR, "**/*_tf/saved_model.pb"), recursive=True):
+        tf_dir = os.path.dirname(tf_pb)
+        rel = os.path.relpath(tf_dir, MODELS_DIR)
+        parts = rel.split("/")
+        folder = parts[0] if len(parts) > 1 else ""
+        basename = parts[-1]  # e.g. "x_80_tf"
+        m = _re.match(r"([xyz])_\d+_tf$", basename)
+        if m:
+            direction = m.group(1)
+            if direction not in sets.get(folder, []):
+                sets[folder].append(direction)
+                all_files.append(os.path.relpath(tf_dir, MODELS_DIR))
+
     model_sets = []
     for folder, directions in sorted(sets.items()):
-        # Extract resolution from folder name like "res80"
+        # Extract resolution from folder name like "res80" or "res80_fno"
         m = _re.match(r"res(\d+)", folder)
         resolution = int(m.group(1)) if m else 0
         model_sets.append({
             "folder": folder,
             "resolution": resolution,
-            "directions": sorted(directions),
+            "directions": sorted(set(directions)),
         })
 
     return {"models": all_files, "modelSets": model_sets, "modelsDir": MODELS_DIR}

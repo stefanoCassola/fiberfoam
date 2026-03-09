@@ -34,6 +34,8 @@ dist/
 FiberGeo_*/
 scaling_factors.json
 !/models/scaling_factors.json
+# TF SavedModel files are too large for git (use Docker or download separately)
+models/**/*_tf/
 
 # Docker runtime
 docker/output/

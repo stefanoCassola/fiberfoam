@@ -243,6 +243,7 @@ class PipelineRequest(BaseModel):
     voxelSize: float = 0.5e-6
     voxelRes: int = 320
     modelRes: int = 80
+    modelFolder: str = ""
     inletBuffer: int = 0
     outletBuffer: int = 0
     connectivity: bool = True
