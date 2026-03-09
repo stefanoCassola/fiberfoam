@@ -1,7 +1,11 @@
 import glob
 import os
 
+import json
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Query
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -16,6 +20,7 @@ from services.paths import (
     WORK_DIR,
     UPLOAD_DIR,
     JOBS_DIR,
+    FEEDBACK_DIR,
 )
 
 app = FastAPI(
@@ -46,7 +51,7 @@ app.include_router(filesystem.router, prefix="/api/filesystem", tags=["filesyste
 @app.on_event("startup")
 async def startup():
     """Create required directories and reload persisted jobs."""
-    for d in (WORK_DIR, UPLOAD_DIR, JOBS_DIR):
+    for d in (WORK_DIR, UPLOAD_DIR, JOBS_DIR, FEEDBACK_DIR):
         os.makedirs(d, exist_ok=True)
     job_manager.load_persisted_jobs()
 
@@ -70,6 +75,31 @@ async def health():
         },
         "models": [os.path.basename(m) for m in models],
     }
+
+
+@app.get("/api/system/stats")
+async def system_stats():
+    """Return live system resource usage (memory)."""
+    mem: dict = {"totalGb": 0, "usedGb": 0, "availableGb": 0, "percent": 0}
+    try:
+        with open("/proc/meminfo") as f:
+            info = {}
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    info[parts[0].rstrip(":")] = int(parts[1])  # kB
+            total = info.get("MemTotal", 0)
+            available = info.get("MemAvailable", 0)
+            used = total - available
+            mem = {
+                "totalGb": round(total / 1048576, 1),
+                "usedGb": round(used / 1048576, 1),
+                "availableGb": round(available / 1048576, 1),
+                "percent": round(used / total * 100, 1) if total > 0 else 0,
+            }
+    except Exception:
+        pass
+    return mem
 
 
 @app.get("/api/jobs/{job_id}")
@@ -98,6 +128,40 @@ async def list_jobs():
 
     jobs = job_store.list_jobs()
     return {"jobs": jobs}
+
+
+class FeedbackBody(BaseModel):
+    category: str = "general"
+    message: str
+    contact: str = ""
+
+
+@app.post("/api/feedback")
+async def submit_feedback(body: FeedbackBody):
+    """Save user feedback to a local JSON file."""
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    entry = {
+        "timestamp": ts,
+        "category": body.category,
+        "message": body.message,
+        "contact": body.contact,
+    }
+    filepath = os.path.join(FEEDBACK_DIR, f"feedback_{ts}.json")
+    with open(filepath, "w") as f:
+        json.dump(entry, f, indent=2)
+    return {"status": "ok", "id": ts}
+
+
+@app.get("/api/feedback")
+async def list_feedback():
+    """List all feedback entries (for admin review)."""
+    entries = []
+    if os.path.isdir(FEEDBACK_DIR):
+        for fname in sorted(os.listdir(FEEDBACK_DIR), reverse=True):
+            if fname.endswith(".json"):
+                with open(os.path.join(FEEDBACK_DIR, fname)) as f:
+                    entries.append(json.load(f))
+    return {"feedback": entries}
 
 
 # Serve static frontend files in production -- MUST be last (catch-all)

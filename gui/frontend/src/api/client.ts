@@ -1,10 +1,45 @@
 import axios, { AxiosResponse } from 'axios'
 
 // ---------------------------------------------------------------------------
-// Axios instance -- all requests are relative to /api
+// Backend URL resolution
+// ---------------------------------------------------------------------------
+const STORAGE_KEY = 'fiberfoam_backend_url'
+
+function resolveBaseURL(): string {
+  // 1. Check localStorage override
+  const stored = localStorage.getItem(STORAGE_KEY)
+  if (stored) return stored
+
+  // 2. If running inside Docker / same-origin (path-based API), use relative
+  //    This is the case when frontend is served by the FastAPI backend
+  if (window.location.port === '3000' || window.location.pathname.startsWith('/api')) {
+    return '/api'
+  }
+
+  // 3. Hosted mode (e.g. Vercel) — default to user's local backend
+  return 'http://localhost:3000/api'
+}
+
+export function getBackendUrl(): string {
+  return api.defaults.baseURL ?? resolveBaseURL()
+}
+
+export function setBackendUrl(url: string) {
+  const cleaned = url.replace(/\/+$/, '')
+  localStorage.setItem(STORAGE_KEY, cleaned)
+  api.defaults.baseURL = cleaned
+}
+
+export function resetBackendUrl() {
+  localStorage.removeItem(STORAGE_KEY)
+  api.defaults.baseURL = resolveBaseURL()
+}
+
+// ---------------------------------------------------------------------------
+// Axios instance
 // ---------------------------------------------------------------------------
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: resolveBaseURL(),
   headers: { 'Content-Type': 'application/json' },
   timeout: 120_000, // 2 minutes default; long-running jobs use their own
 })
@@ -619,6 +654,30 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   const res = await api.get<JobStatus>(`/jobs/${jobId}`)
+  return res.data
+}
+
+export interface SystemStats {
+  totalGb: number
+  usedGb: number
+  availableGb: number
+  percent: number
+}
+
+export async function getSystemStats(): Promise<SystemStats> {
+  const res = await api.get<SystemStats>('/system/stats')
+  return res.data
+}
+
+// ---------------------------------------------------------------------------
+// Feedback
+// ---------------------------------------------------------------------------
+export async function submitFeedback(params: {
+  category: string
+  message: string
+  contact?: string
+}): Promise<{ status: string; id: string }> {
+  const res = await api.post<{ status: string; id: string }>('/feedback', params)
   return res.data
 }
 
