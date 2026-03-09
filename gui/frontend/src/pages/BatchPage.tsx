@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import NumberInput from '../components/NumberInput'
 import FolderPicker from '../components/FolderPicker'
+import RamMonitor from '../components/RamMonitor'
 import {
   browseFilesystem,
   listModelSets,
@@ -786,6 +787,7 @@ export default function BatchPage() {
 
         {/* Right: Progress table + Summary */}
         <div className="xl:col-span-2 space-y-6">
+          <RamMonitor active={running} />
           <div className="card">
             <h3 className="card-header">Batch Progress</h3>
             {!batchStatus ? (

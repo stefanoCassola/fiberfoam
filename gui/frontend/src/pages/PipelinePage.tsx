@@ -3,6 +3,7 @@ import PermeabilityTable from '../components/PermeabilityTable'
 import ConvergenceChart from '../components/ConvergenceChart'
 import NumberInput from '../components/NumberInput'
 import FolderPicker from '../components/FolderPicker'
+import RamMonitor from '../components/RamMonitor'
 import Viewer3D, { type VoxelData } from '../components/Viewer3D'
 import { useWorkflow } from '../context/WorkflowContext'
 import {
@@ -1219,6 +1220,7 @@ export default function PipelinePage() {
       {step === 5 && (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           <div className="space-y-6">
+            <RamMonitor active={pipelineStatus?.status === 'running' || pipelineStatus?.status === 'queued'} />
             <div className="card">
               <h3 className="card-header">Pipeline Progress</h3>
 
