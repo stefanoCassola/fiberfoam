@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import NumberInput from '../components/NumberInput'
 import FolderPicker from '../components/FolderPicker'
 import {
-  uploadGeometry,
+  browseFilesystem,
   listModelSets,
   runBatch,
   getBatchStatus,
@@ -11,6 +11,7 @@ import {
   type BatchStatus,
   type PipelineStatus,
   type ModelSet,
+  type BrowseEntry,
 } from '../api/client'
 
 const MODE_LABELS: Record<PipelineMode, { title: string; desc: string }> = {
@@ -64,30 +65,22 @@ function StatusIcon({ status }: { status: string }) {
   return <div className="w-4 h-4 rounded-full bg-gray-700" />
 }
 
-/** Discovered file from folder picker */
-interface DiscoveredFile {
-  file: File
-  relativePath: string
-  selected: boolean
-}
-
-/** File that has been uploaded to the server */
-interface UploadedFile {
-  name: string
-  serverFilename: string
-}
-
 const GEOM_EXTENSIONS = ['.dat', '.npy', '.raw']
 
 function isGeomFile(name: string): boolean {
   return GEOM_EXTENSIONS.some((ext) => name.toLowerCase().endsWith(ext))
 }
 
-/** Compute progress for a pipeline from its steps */
+/** Selected file from server-side browsing */
+interface SelectedFile {
+  name: string
+  absPath: string
+  selected: boolean
+}
+
 function pipelineProgress(p: PipelineStatus): number {
   if (!p.steps || p.steps.length === 0) {
     if (p.status === 'completed') return 100
-    if (p.status === 'queued' || p.status === 'pending') return 0
     return 0
   }
   const total = p.steps.length
@@ -99,16 +92,20 @@ function pipelineProgress(p: PipelineStatus): number {
   return (done / total) * 100
 }
 
-
 export default function BatchPage() {
-  // Folder-based file discovery
-  const [discoveredFiles, setDiscoveredFiles] = useState<DiscoveredFile[]>([])
-  const folderInputRef = useRef<HTMLInputElement>(null)
+  // Server-side folder browser state
+  const [browserOpen, setBrowserOpen] = useState(false)
+  const [browserPath, setBrowserPath] = useState('')
+  const [browserDirs, setBrowserDirs] = useState<BrowseEntry[]>([])
+  const [browserFiles, setBrowserFiles] = useState<BrowseEntry[]>([])
+  const [browserRoot, setBrowserRoot] = useState('')
+  const [browserAbsPath, setBrowserAbsPath] = useState('')
+  const [browserLoading, setBrowserLoading] = useState(false)
+  const [browserError, setBrowserError] = useState<string | null>(null)
 
-  // Uploaded files ready for processing
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState('')
+  // Selected files for processing
+  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([])
+  const [selectedFolderDisplay, setSelectedFolderDisplay] = useState('')
 
   // Config
   const [mode, setMode] = useState<PipelineMode>('full')
@@ -123,27 +120,51 @@ export default function BatchPage() {
   const [modelSets, setModelSets] = useState<ModelSet[]>([])
   const [selectedModelFolder, setSelectedModelFolder] = useState('')
 
+  // Preprocessing
+  const [enableRemap, setEnableRemap] = useState(false)
+  const [poreValue, setPoreValue] = useState(0)
+  const [otherMapping, setOtherMapping] = useState<'solid' | 'pore'>('solid')
+  const [autoAlign, setAutoAlign] = useState(false)
+
   const solver = 'simpleFoamMod'
   const maxIter = 10000
   const writeInterval = 10000
 
-  // Batch status
-  const [batchId, setBatchId] = useState<string | null>(null)
+  // Batch status — restore from sessionStorage so navigation doesn't lose track
+  const [batchId, setBatchIdRaw] = useState<string | null>(
+    () => sessionStorage.getItem('fiberfoam_batch_id'),
+  )
   const [batchStatus, setBatchStatus] = useState<BatchStatus | null>(null)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Set webkitdirectory attribute (non-standard, not in React types)
-  useEffect(() => {
-    const el = folderInputRef.current
-    if (el) {
-      el.setAttribute('webkitdirectory', '')
-      el.setAttribute('directory', '')
-      // Also set as property for browsers that need it
-      ;(el as unknown as Record<string, boolean>).webkitdirectory = true
+  const setBatchId = useCallback((id: string | null) => {
+    setBatchIdRaw(id)
+    if (id) {
+      sessionStorage.setItem('fiberfoam_batch_id', id)
+    } else {
+      sessionStorage.removeItem('fiberfoam_batch_id')
     }
   }, [])
+
+  // On mount, if we have a stored batchId, start polling immediately
+  useEffect(() => {
+    if (batchId && !running) {
+      // Check if the batch is still active
+      getBatchStatus(batchId)
+        .then((status) => {
+          setBatchStatus(status)
+          if (status.status === 'running' || status.status === 'queued') {
+            setRunning(true)
+          }
+        })
+        .catch(() => {
+          // Batch no longer exists, clear it
+          setBatchId(null)
+        })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load models
   useEffect(() => {
@@ -158,57 +179,94 @@ export default function BatchPage() {
       .catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle folder selection via native folder picker
-  const handleFolderSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files
-    if (!fileList || fileList.length === 0) return
+  // Browse a directory on the server
+  const browse = useCallback(async (path: string) => {
+    setBrowserLoading(true)
+    setBrowserError(null)
+    try {
+      const result = await browseFilesystem(path)
+      setBrowserDirs(result.dirs)
+      setBrowserFiles(result.files)
+      setBrowserPath(result.path)
+      setBrowserRoot(result.root)
+      setBrowserAbsPath(result.absPath)
+    } catch (err) {
+      setBrowserError(err instanceof Error ? err.message : 'Failed to browse')
+    } finally {
+      setBrowserLoading(false)
+    }
+  }, [])
 
-    const files = Array.from(fileList)
-    const geomFiles: DiscoveredFile[] = files
-      .filter((f) => isGeomFile(f.name))
+  const handleOpenBrowser = useCallback(() => {
+    setBrowserOpen(true)
+    browse('')
+  }, [browse])
+
+  const handleBrowserNavigate = useCallback(
+    (dirName: string) => {
+      const next = browserPath ? `${browserPath}/${dirName}` : dirName
+      browse(next)
+    },
+    [browserPath, browse],
+  )
+
+  const handleBrowserUp = useCallback(() => {
+    const parts = browserPath.split('/').filter(Boolean)
+    parts.pop()
+    browse(parts.join('/'))
+  }, [browserPath, browse])
+
+  // Select this folder: take its files and show them with checkboxes
+  const handleSelectFolder = useCallback(() => {
+    const geomFiles = browserFiles
+      .filter((f) => f.size && f.size > 0)
       .map((f) => ({
-        file: f,
-        relativePath: f.webkitRelativePath || f.name,
-        selected: true, // select all by default
+        name: f.name,
+        absPath: `${browserAbsPath}/${f.name}`,
+        selected: isGeomFile(f.name),
       }))
+      .sort((a, b) => {
+        const aGeom = isGeomFile(a.name) ? 0 : 1
+        const bGeom = isGeomFile(b.name) ? 0 : 1
+        if (aGeom !== bGeom) return aGeom - bGeom
+        return a.name.localeCompare(b.name)
+      })
 
-    setDiscoveredFiles(geomFiles)
-    setUploadedFiles([])
+    setSelectedFiles(geomFiles)
+    setSelectedFolderDisplay(`${browserRoot}/${browserPath}`)
+    setBrowserOpen(false)
     setError(null)
     setBatchStatus(null)
     setBatchId(null)
 
     if (geomFiles.length === 0) {
-      setError('No geometry files (.dat, .npy, .raw) found in selected folder')
+      setError('No files found in selected folder')
     }
-
-    // Reset input
-    if (folderInputRef.current) folderInputRef.current.value = ''
-  }, [])
+  }, [browserFiles, browserAbsPath, browserRoot, browserPath])
 
   const toggleFile = useCallback((idx: number) => {
-    setDiscoveredFiles((prev) =>
+    setSelectedFiles((prev) =>
       prev.map((f, i) => (i === idx ? { ...f, selected: !f.selected } : f)),
     )
   }, [])
 
   const toggleAll = useCallback(() => {
-    setDiscoveredFiles((prev) => {
+    setSelectedFiles((prev) => {
       const allSelected = prev.every((f) => f.selected)
       return prev.map((f) => ({ ...f, selected: !allSelected }))
     })
   }, [])
 
-  const selectedCount = discoveredFiles.filter((f) => f.selected).length
+  const selectedCount = selectedFiles.filter((f) => f.selected).length
 
-  // Upload selected files then run batch
+  // Run batch — files are already on the server, just pass absolute paths
   const handleRunBatch = useCallback(async () => {
     setError(null)
     const selectedDirs = Object.entries(flowDirs)
       .filter(([, v]) => v)
       .map(([k]) => k)
 
-    const filesToProcess = discoveredFiles.filter((f) => f.selected)
+    const filesToProcess = selectedFiles.filter((f) => f.selected)
     if (filesToProcess.length === 0) {
       setError('Select at least one geometry file')
       return
@@ -219,29 +277,7 @@ export default function BatchPage() {
     }
 
     setRunning(true)
-    setUploading(true)
 
-    // Upload files first
-    const uploaded: UploadedFile[] = []
-    for (let i = 0; i < filesToProcess.length; i++) {
-      const f = filesToProcess[i]
-      setUploadProgress(`Uploading ${i + 1} / ${filesToProcess.length}: ${f.file.name}`)
-      try {
-        const result = await uploadGeometry(f.file)
-        uploaded.push({ name: f.file.name, serverFilename: result.filename })
-      } catch (err) {
-        setError(`Failed to upload ${f.file.name}: ${err instanceof Error ? err.message : 'unknown'}`)
-        setUploading(false)
-        setRunning(false)
-        return
-      }
-    }
-
-    setUploadedFiles(uploaded)
-    setUploading(false)
-    setUploadProgress('')
-
-    // Start batch
     try {
       const res = await runBatch({
         mode,
@@ -255,15 +291,17 @@ export default function BatchPage() {
         solver,
         maxIter,
         writeInterval,
-        inputFiles: uploaded.map((f) => f.serverFilename),
+        inputFiles: filesToProcess.map((f) => f.absPath),
         ...(outputDir ? { outputDir } : {}),
+        ...(enableRemap ? { remapPoreValue: poreValue, remapOtherMapping: otherMapping } : {}),
+        autoAlign,
       })
       setBatchId(res.batchId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start batch')
       setRunning(false)
     }
-  }, [mode, flowDirs, voxelSize, voxelRes, modelRes, inletBuffer, outletBuffer, connectivity, discoveredFiles, outputDir])
+  }, [mode, flowDirs, voxelSize, voxelRes, modelRes, inletBuffer, outletBuffer, connectivity, selectedFiles, outputDir])
 
   // Poll batch status
   useEffect(() => {
@@ -314,6 +352,8 @@ export default function BatchPage() {
   const totalCount = batchStatus?.totalFiles ?? 0
   const overallProgress = totalCount > 0 ? (batchStatus?.completedFiles ?? 0) / totalCount * 100 : 0
 
+  const browserPathParts = browserPath ? browserPath.split('/').filter(Boolean) : []
+
   return (
     <div className="space-y-6">
       <div>
@@ -329,6 +369,119 @@ export default function BatchPage() {
         </div>
       )}
 
+      {/* Folder browser modal */}
+      {browserOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-lg mx-4">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h3 className="text-white font-semibold">Select Input Folder</h3>
+              <button
+                onClick={() => setBrowserOpen(false)}
+                className="text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Breadcrumb */}
+            <div className="px-5 py-3 border-b border-gray-800 flex items-center gap-1 text-sm overflow-x-auto">
+              <button
+                onClick={() => browse('')}
+                className="text-primary-400 hover:text-primary-300 shrink-0 font-medium"
+              >
+                Home
+              </button>
+              {browserPathParts.map((part, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <span className="text-gray-600">/</span>
+                  <button
+                    onClick={() => browse(browserPathParts.slice(0, i + 1).join('/'))}
+                    className="text-primary-400 hover:text-primary-300 font-mono text-xs"
+                  >
+                    {part}
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Directory list */}
+            <div className="px-5 py-3 max-h-64 overflow-y-auto min-h-[160px]">
+              {browserLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-400 py-4">
+                  <svg className="animate-spin h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Loading...
+                </div>
+              ) : browserError ? (
+                <div className="text-sm text-red-400 py-4">{browserError}</div>
+              ) : (
+                <div className="space-y-1">
+                  {browserPath && (
+                    <button
+                      onClick={handleBrowserUp}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                      </svg>
+                      <span className="text-sm text-gray-400">..</span>
+                    </button>
+                  )}
+
+                  {browserDirs.map((d) => (
+                    <button
+                      key={d.name}
+                      onClick={() => handleBrowserNavigate(d.name)}
+                      className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
+                    >
+                      <svg className="w-4 h-4 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                      </svg>
+                      <span className="text-sm text-gray-200 font-mono">{d.name}</span>
+                    </button>
+                  ))}
+
+                  {/* Show file count hint */}
+                  {browserFiles.length > 0 && (
+                    <div className="text-xs text-gray-500 pt-2 px-3">
+                      {browserFiles.length} file{browserFiles.length !== 1 ? 's' : ''} in this folder
+                      {' '}({browserFiles.filter((f) => isGeomFile(f.name)).length} geometry)
+                    </div>
+                  )}
+
+                  {browserDirs.length === 0 && browserFiles.length === 0 && (
+                    <p className="text-sm text-gray-500 py-2">Empty directory.</p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-gray-800 flex items-center justify-between">
+              <div className="text-xs text-gray-500 truncate mr-4">
+                {browserRoot}/{browserPath || ''}
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => setBrowserOpen(false)} className="btn-secondary text-sm">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSelectFolder}
+                  disabled={browserFiles.length === 0}
+                  className="btn-primary text-sm"
+                >
+                  Select This Folder
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Left: File selection + Config */}
         <div className="space-y-6">
@@ -336,49 +489,38 @@ export default function BatchPage() {
           <div className="card">
             <h3 className="card-header">Geometry Files</h3>
 
-            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-600 rounded-lg cursor-pointer hover:border-primary-500 hover:bg-gray-800/50 transition-colors">
+            <button
+              onClick={handleOpenBrowser}
+              disabled={running}
+              className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-gray-600 rounded-lg cursor-pointer hover:border-primary-500 hover:bg-gray-800/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <svg className="w-8 h-8 text-gray-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026m-16.5 0a2.25 2.25 0 00-1.883 2.542l.857 6a2.25 2.25 0 002.227 1.932H19.05a2.25 2.25 0 002.227-1.932l.857-6a2.25 2.25 0 00-1.883-2.542m-16.5 0V6A2.25 2.25 0 016 3.75h3.879a1.5 1.5 0 011.06.44l2.122 2.12a1.5 1.5 0 001.06.44H18A2.25 2.25 0 0120.25 9v.776" />
               </svg>
-              <span className="text-sm text-gray-400">Click to select a folder</span>
-              <span className="text-xs text-gray-600 mt-1">Geometry files (.dat, .npy, .raw) will be listed</span>
-              <input
-                ref={folderInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFolderSelected}
-                disabled={uploading || running}
-              />
-            </label>
+              <span className={`text-sm ${selectedFolderDisplay ? 'text-gray-200' : 'text-gray-400'}`}>
+                {selectedFolderDisplay || 'Click to browse for a folder'}
+              </span>
+              <span className="text-xs text-gray-600 mt-1">Browse server filesystem to find geometry files</span>
+            </button>
 
-            {uploading && (
-              <div className="mt-3 flex items-center gap-2 text-sm text-gray-400">
-                <svg className="animate-spin h-4 w-4 text-primary-500" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                {uploadProgress}
-              </div>
-            )}
-
-            {discoveredFiles.length > 0 && (
+            {selectedFiles.length > 0 && (
               <div className="mt-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-gray-500">
-                    {selectedCount} / {discoveredFiles.length} file{discoveredFiles.length !== 1 ? 's' : ''} selected
+                    {selectedCount} / {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
                   </span>
                   <button
                     onClick={toggleAll}
                     disabled={running}
                     className="text-xs text-primary-400 hover:text-primary-300"
                   >
-                    {discoveredFiles.every((f) => f.selected) ? 'Deselect All' : 'Select All'}
+                    {selectedFiles.every((f) => f.selected) ? 'Deselect All' : 'Select All'}
                   </button>
                 </div>
                 <div className="space-y-1 max-h-64 overflow-y-auto">
-                  {discoveredFiles.map((f, idx) => (
+                  {selectedFiles.map((f, idx) => (
                     <label
-                      key={f.relativePath}
+                      key={f.absPath}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
                         f.selected
                           ? 'bg-primary-600/10 border-primary-600/30'
@@ -392,7 +534,9 @@ export default function BatchPage() {
                         disabled={running}
                         className="h-4 w-4 rounded border-gray-600 bg-gray-800 text-primary-500 focus:ring-primary-500 shrink-0"
                       />
-                      <span className="text-sm text-gray-300 font-mono truncate">{f.file.name}</span>
+                      <span className={`text-sm font-mono truncate ${isGeomFile(f.name) ? 'text-gray-200' : 'text-gray-500'}`}>
+                        {f.name}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -421,6 +565,79 @@ export default function BatchPage() {
                   <p className="text-[10px] text-gray-500 mt-0.5">{MODE_LABELS[m].desc}</p>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Preprocessing */}
+          <div className="card">
+            <h3 className="card-header">Preprocessing</h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Applied identically to each selected file before running the pipeline.
+            </p>
+            <div className="space-y-3">
+              {/* Remap */}
+              <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={enableRemap}
+                    onChange={(e) => setEnableRemap(e.target.checked)}
+                    disabled={running}
+                    className="h-5 w-5 rounded border-gray-600 bg-gray-800 text-primary-500 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-white font-bold">Remap Values</span>
+                </label>
+                <p className="text-xs text-gray-400 mt-2 ml-8">
+                  Convert non-binary geometries to binary (pore=0, solid=1).
+                </p>
+                {enableRemap && (
+                  <div className="mt-3 ml-8 space-y-3">
+                    <div>
+                      <label className="label text-xs">Pore Value</label>
+                      <NumberInput
+                        min={0}
+                        max={255}
+                        className="input-field"
+                        value={poreValue}
+                        onChange={setPoreValue}
+                        disabled={running}
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Voxels with this value become fluid (0).
+                      </p>
+                    </div>
+                    <div>
+                      <label className="label text-xs">Other Values</label>
+                      <select
+                        className="input-field"
+                        value={otherMapping}
+                        onChange={(e) => setOtherMapping(e.target.value as 'solid' | 'pore')}
+                        disabled={running}
+                      >
+                        <option value="solid">Treat as solid (1)</option>
+                        <option value="pore">Treat as pore (0)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Auto-align */}
+              <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoAlign}
+                    onChange={(e) => setAutoAlign(e.target.checked)}
+                    disabled={running}
+                    className="h-5 w-5 rounded border-gray-600 bg-gray-800 text-primary-500 focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-white font-bold">Auto-Align to X-Axis</span>
+                </label>
+                <p className="text-xs text-gray-400 mt-2 ml-8">
+                  Estimate fiber orientation via FFT and rotate to align fibers with the X-axis.
+                </p>
+              </div>
             </div>
           </div>
 
@@ -595,7 +812,7 @@ export default function BatchPage() {
                   <tbody className="divide-y divide-gray-800">
                     {batchStatus.pipelines.map((p: PipelineStatus, idx: number) => {
                       const prog = pipelineProgress(p)
-                      const inputFile = uploadedFiles[idx]?.name ?? p.pipelineId
+                      const inputFile = selectedFiles.filter((f) => f.selected)[idx]?.name ?? p.pipelineId
                       return (
                         <tr key={p.pipelineId} className="hover:bg-gray-800/50 transition-colors">
                           <td className="py-3 px-4 text-gray-500 text-xs">{idx + 1}</td>

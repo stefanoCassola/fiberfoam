@@ -8,7 +8,7 @@ services:
     volumes:
       - ${FIBERFOAM_OUTPUT_DIR:-./output}:/data/cases
       - ${FIBERFOAM_INPUT_DIR:-./input}:/data/input:ro
-      - ${FIBERFOAM_BROWSE_ROOT:-$HOME}:/host
+      - ${FIBERFOAM_BROWSE_ROOT:-/}:/host
       - fiberfoam-uploads:/data/uploads
       - fiberfoam-jobs:/data/jobs
     environment:

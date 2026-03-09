@@ -1,9 +1,12 @@
 """Pipeline orchestration: single-geometry pipelines and batch processing."""
 import asyncio
+import logging
 import os
 import re
 import uuid
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, HTTPException
 
@@ -687,6 +690,76 @@ async def _run_and_wait(
 
 
 # ---------------------------------------------------------------------------
+# Batch preprocessing helper
+# ---------------------------------------------------------------------------
+
+
+async def _preprocess_file(filename: str, req: BatchRequest) -> str:
+    """Apply preprocessing steps to a file in UPLOAD_DIR.
+
+    Returns the (possibly new) filename after preprocessing.
+    The steps mirror what the single-pipeline preprocess UI does:
+    1. Remap values (if remapPoreValue is set)
+    2. Auto-align fibers to x-axis (if autoAlign is True)
+    """
+    from routes.preprocess import _load_array, _save_dat, _estimate_orientation, _crop_to_content
+
+    active = filename
+
+    # Step 1: Remap values
+    if req.remapPoreValue is not None:
+        import numpy as np
+        arr = _load_array(active)
+        pore_val = req.remapPoreValue
+        complement = 1 if pore_val == 0 else 0
+        default = 1 if req.remapOtherMapping == "solid" else 0
+        output = np.full_like(arr, default, dtype=np.uint8)
+        output[arr == pore_val] = 0
+        output[arr == complement] = 1
+
+        base, _ext = os.path.splitext(active)
+        out_name = f"{base}_preprocessed.dat"
+        _save_dat(output, os.path.join(UPLOAD_DIR, out_name))
+        active = out_name
+
+    # Step 2: Auto-align
+    if req.autoAlign:
+        import numpy as np
+        from scipy.ndimage import rotate as ndimage_rotate
+
+        arr = _load_array(active)
+        ori = _estimate_orientation(arr)
+
+        xz_rot = ori["xz_rotation"]
+        xy_rot = ori["xy_rotation"]
+        need_xz = abs(xz_rot) >= 0.5
+        need_xy = abs(xy_rot) >= 0.5
+
+        if need_xz or need_xy:
+            result = arr.astype(np.float64)
+            if need_xz:
+                result = ndimage_rotate(result, xz_rot, axes=(0, 2), order=0, reshape=True)
+            if need_xy:
+                if need_xz:
+                    tmp = (result > 0.5).astype(np.uint8)
+                    ori2 = _estimate_orientation(tmp)
+                    xy_rot2 = ori2["xy_rotation"]
+                    if abs(xy_rot2) >= 0.5:
+                        result = ndimage_rotate(result, xy_rot2, axes=(0, 1), order=0, reshape=True)
+                else:
+                    result = ndimage_rotate(result, xy_rot, axes=(0, 1), order=0, reshape=True)
+            result = (result > 0.5).astype(np.uint8)
+            result = _crop_to_content(result)
+
+            base, _ext = os.path.splitext(active)
+            out_name = f"{base}_aligned.dat"
+            _save_dat(result, os.path.join(UPLOAD_DIR, out_name))
+            active = out_name
+
+    return active
+
+
+# ---------------------------------------------------------------------------
 # Batch execution logic
 # ---------------------------------------------------------------------------
 
@@ -706,6 +779,24 @@ async def _execute_batch(
         # Resolve relative paths against UPLOAD_DIR (same as run_pipeline)
         if not os.path.isabs(filepath):
             filepath = os.path.join(UPLOAD_DIR, filepath)
+
+        # Copy file to UPLOAD_DIR if it's not already there, so preprocessing can find it
+        basename = os.path.basename(filepath)
+        upload_copy = os.path.join(UPLOAD_DIR, basename)
+        if os.path.normpath(filepath) != os.path.normpath(upload_copy):
+            import shutil
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            shutil.copy2(filepath, upload_copy)
+
+        # Apply preprocessing if requested
+        active_filename = basename
+        try:
+            active_filename = await _preprocess_file(active_filename, req)
+        except Exception as exc:
+            logger.warning("Preprocessing failed for %s: %s", basename, exc)
+            # Continue with original file if preprocessing fails
+
+        filepath = os.path.join(UPLOAD_DIR, active_filename)
 
         # Create a pipeline request for this file
         pipeline_req = PipelineRequest(
