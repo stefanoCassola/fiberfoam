@@ -74,22 +74,56 @@ def _load_scaling_factors() -> dict:
     return factors
 
 
+def _find_model(direction: str, model_res: int, model_folder: str = "") -> tuple[str, str]:
+    """Find a model file and return (path, format).
+
+    format is 'onnx' or 'tf'.
+    """
+    if model_folder:
+        folder = os.path.join(MODELS_DIR, model_folder)
+    else:
+        folder = os.path.join(MODELS_DIR, f"res{model_res}")
+
+    # Check ONNX first
+    onnx_path = os.path.join(folder, f"{direction}_{model_res}.onnx")
+    if os.path.isfile(onnx_path):
+        return onnx_path, "onnx"
+
+    # Check TF SavedModel directory
+    tf_path = os.path.join(folder, f"{direction}_{model_res}_tf")
+    if os.path.isdir(tf_path) and os.path.isfile(os.path.join(tf_path, "saved_model.pb")):
+        return tf_path, "tf"
+
+    raise FileNotFoundError(
+        f"No model found for direction={direction}, res={model_res} in {folder}"
+    )
+
+
 def _run_onnx_inference(
-    geom: np.ndarray, direction: str, model_res: int
+    geom: np.ndarray, direction: str, model_res: int, model_folder: str = ""
 ) -> np.ndarray:
-    """Run ONNX model inference for a single direction."""
-    import onnxruntime as ort
+    """Run model inference for a single direction (ONNX or TF SavedModel)."""
+    model_path, fmt = _find_model(direction, model_res, model_folder)
 
-    model_path = os.path.join(MODELS_DIR, f"res{model_res}", f"{direction}_{model_res}.onnx")
-    if not os.path.isfile(model_path):
-        raise FileNotFoundError(f"ONNX model not found: {model_path}")
-
-    session = ort.InferenceSession(model_path)
-    input_name = session.get_inputs()[0].name
-    # Model expects (batch, X, Y, Z, channels)
+    # Model expects (batch, X, Y, Z, channels) — channels-last
     input_tensor = geom.reshape(1, *geom.shape, 1)
-    result = session.run(None, {input_name: input_tensor})
-    return result[0].squeeze()
+
+    if fmt == "onnx":
+        import onnxruntime as ort
+        session = ort.InferenceSession(model_path)
+        input_name = session.get_inputs()[0].name
+        result = session.run(None, {input_name: input_tensor})
+        return result[0].squeeze()
+
+    else:  # TF SavedModel
+        import tensorflow as tf
+        model = tf.saved_model.load(model_path)
+        sig = model.signatures["serving_default"]
+        tf_input = tf.constant(input_tensor)
+        output = sig(input_1=tf_input)
+        # Get the first (and only) output tensor
+        result = list(output.values())[0].numpy()
+        return result.squeeze()
 
 
 def predict_permeability(
@@ -98,6 +132,7 @@ def predict_permeability(
     voxel_size: float = 0.5e-6,
     voxel_res: int = 320,
     model_res: int = 80,
+    model_folder: str = "",
     inlet_buffer: int = 0,
     outlet_buffer: int = 0,
     nu: float = 7.934782609e-05,
@@ -158,7 +193,7 @@ def predict_permeability(
             raise ValueError(f"No scaling factor for direction {direction} at {res_key}")
 
         # Run inference
-        raw_output = _run_onnx_inference(geom_model, direction, model_res)
+        raw_output = _run_onnx_inference(geom_model, direction, model_res, model_folder=model_folder)
 
         # Scale output to physical velocity
         velocity = raw_output * scale_factor

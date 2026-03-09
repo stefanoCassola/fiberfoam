@@ -345,6 +345,7 @@ export default function PipelinePage() {
         voxelSize,
         voxelRes,
         modelRes,
+        modelFolder: selectedModelFolder,
         inletBuffer,
         outletBuffer,
         connectivity,
@@ -1051,7 +1052,7 @@ export default function PipelinePage() {
 
               {(mode === 'predict_only' || mode === 'mesh_predict' || mode === 'full') && (
                 <div>
-                  <label className="label">ML Model <span className="text-xs text-gray-500 font-normal">(3D U-Net, ~1.4M parameters)</span></label>
+                  <label className="label">ML Model</label>
                   {modelSets.length > 0 ? (
                     <select
                       className="input-field"
@@ -1063,11 +1064,15 @@ export default function PipelinePage() {
                         if (ms) setModelRes(ms.resolution)
                       }}
                     >
-                      {modelSets.map((ms) => (
-                        <option key={ms.folder} value={ms.folder}>
-                          {ms.folder} (res {ms.resolution}, directions: {ms.directions.join(', ')})
-                        </option>
-                      ))}
+                      {modelSets.map((ms) => {
+                        const isFNO = ms.folder.toLowerCase().includes('fno')
+                        const arch = isFNO ? 'FNO, ~28.3M params' : '3D U-Net, ~1.4M params'
+                        return (
+                          <option key={ms.folder} value={ms.folder}>
+                            {ms.folder} — {arch} (res {ms.resolution}, {ms.directions.join('/')})
+                          </option>
+                        )
+                      })}
                     </select>
                   ) : (
                     <p className="text-sm text-gray-500">No models found</p>

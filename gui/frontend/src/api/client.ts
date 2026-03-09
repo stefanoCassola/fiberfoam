@@ -116,6 +116,7 @@ export interface PipelineRequest {
   voxelSize: number
   voxelRes: number
   modelRes: number
+  modelFolder?: string
   inletBuffer: number
   outletBuffer: number
   connectivity: boolean
