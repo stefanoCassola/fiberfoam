@@ -175,11 +175,24 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
     if (!message.trim()) return
     setSending(true)
     setError('')
+    const payload = { category, message: message.trim(), contact: contact.trim() }
     try {
-      await submitFeedback({ category, message: message.trim(), contact: contact.trim() })
+      // Try local backend first
+      await submitFeedback(payload)
       setSent(true)
     } catch {
-      setError('Failed to submit feedback. Please try again.')
+      // Fall back to Vercel serverless function
+      try {
+        const res = await fetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        if (res.ok) setSent(true)
+        else setError('Failed to submit feedback. Please try again.')
+      } catch {
+        setError('Failed to submit feedback. Please try again.')
+      }
     } finally {
       setSending(false)
     }
