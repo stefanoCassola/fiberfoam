@@ -4,6 +4,68 @@ FiberFoam is a specialized computational tool for **permeability simulation of f
 
 Built on top of **OpenFOAM** (specifically a modified `simpleFoam` solver — `simpleFoamMod`), FiberFoam provides an end-to-end pipeline: from raw voxel geometry to meshing, optional ML-accelerated initial conditions, steady-state Stokes/Navier-Stokes flow simulation, and permeability extraction.
 
+## Three Ways to Use FiberFoam
+
+| Method | What You Need | Best For |
+|--------|--------------|----------|
+| **Online** | A browser + Docker | Quickest start — guided setup, always up-to-date UI |
+| **Docker** | Docker installed | Self-contained, no build step, full offline use |
+| **Source** | C++ toolchain, OpenFOAM, Node.js | Developers, custom modifications |
+
+### Option 1: Online (Vercel + Local Docker Backend)
+
+Visit **[fiberfoam.vercel.app](https://fiberfoam.vercel.app)** — the web app guides you through installing Docker and starting the backend. All computation runs on your machine; the website is just the interface.
+
+1. Open [fiberfoam.vercel.app](https://fiberfoam.vercel.app)
+2. Follow the setup guide (installs Docker if needed)
+3. Run the provided `docker run` command in your terminal
+4. The page auto-detects the backend and proceeds to the app
+
+### Option 2: Docker (Recommended for Offline Use)
+
+```bash
+cd docker
+./launch.sh
+```
+
+Open your browser at **http://localhost:3000**.
+
+#### Windows
+
+```powershell
+cd docker
+.\launch.ps1
+```
+
+#### Configuration
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `FIBERFOAM_PORT` | `3000` | Host port for the web GUI |
+| `FIBERFOAM_INPUT_DIR` | `./input` | Host directory with geometry files (mounted read-only) |
+| `FIBERFOAM_OUTPUT_DIR` | `./output` | Host directory for simulation results |
+
+Place your `.dat` or `.npy` geometry files in the input directory before starting, or upload them through the GUI.
+
+### Option 3: Build from Source
+
+#### Prerequisites
+
+- C++17 compiler (GCC 9+ or Clang 10+)
+- CMake >= 3.20
+- OpenFOAM v2312
+- Eigen3, FFTW3, yaml-cpp, nlohmann/json
+- ONNX Runtime (optional, for ML prediction)
+- Node.js 18+ (for the web GUI)
+
+#### Build
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . -j$(nproc)
+```
+
 ## What It Does
 
 - **Voxel-to-mesh conversion**: Converts 3D binary voxel arrays (`.dat`, `.npy`) of fiber microstructures into OpenFOAM hexahedral meshes with proper boundary conditions for permeability measurement
@@ -14,6 +76,7 @@ Built on top of **OpenFOAM** (specifically a modified `simpleFoam` solver — `s
 - **Permeability extraction**: Computes permeability via both volume-averaged velocity and flow-rate (Darcy) methods, with optional restriction to the fibrous region only
 - **Fiber orientation detection**: FFT-based automatic estimation and correction of fiber alignment
 - **Batch processing**: Process multiple geometries with identical settings in sequence
+- **Live monitoring**: Real-time RAM usage, convergence charts, and per-step progress tracking
 
 ## Target Application
 
@@ -26,72 +89,39 @@ FiberFoam is designed for researchers and engineers working with **fiber-reinfor
 
 The tool assumes the input is a **voxelized binary geometry** where solid voxels represent fibers and void voxels represent the pore space (or vice versa, with automatic remapping).
 
-## Quick Start (Docker — recommended)
-
-The easiest way to run FiberFoam is via Docker, which bundles OpenFOAM, the solver, ML models, and the web GUI.
-
-```bash
-cd docker
-./launch.sh
-```
-
-Open your browser at **http://localhost:3000**.
-
-### Configuration
-
-| Environment Variable | Default | Description |
-|---|---|---|
-| `FIBERFOAM_PORT` | `3000` | Host port for the web GUI |
-| `FIBERFOAM_INPUT_DIR` | `./input` | Host directory with geometry files (mounted read-only) |
-| `FIBERFOAM_OUTPUT_DIR` | `./output` | Host directory for simulation results |
-
-Place your `.dat` or `.npy` geometry files in the input directory before starting, or upload them through the GUI.
-
-### Windows
-
-```powershell
-cd docker
-.\launch.ps1
-```
-
 ## Web GUI
 
-The GUI provides two main workflows accessible at `http://localhost:3000`:
+The GUI provides two main workflows accessible at `http://localhost:3000` (Docker) or [fiberfoam.vercel.app](https://fiberfoam.vercel.app) (online):
 
 ### Single Pipeline
 
 1. **Upload & Preprocess** — Upload a voxel geometry file, inspect it with the interactive 3D viewer, remap values if needed, estimate and correct fiber orientation
 2. **Configure** — Select pipeline mode, flow directions, voxel size/resolution, buffer zones, ML model, and connectivity filtering
-3. **Run** — Execute the pipeline (mesh → predict → simulate → post-process) with live progress, convergence charts, and residual monitoring
+3. **Run** — Execute the pipeline (mesh → predict → simulate → post-process) with live progress, convergence charts, residual monitoring, and RAM usage
 4. **Results** — View permeability results per direction, download CSV, save case files to a chosen output folder
 
 ### Batch Processing
 
-1. **Select Folder** — Use the native OS folder picker to browse for a directory containing geometry files
-2. **Pick Files** — Check/uncheck individual geometry files from the discovered list (Select All supported)
-3. **Configure** — Same settings as single pipeline (mode, flow directions, resolution, buffers, etc.)
-4. **Run** — All selected geometries are processed sequentially with live per-file progress tracking
-5. **Export** — Download CSV results for all completed runs
+1. **Select Folder** — Browse for a directory containing geometry files using the built-in file browser
+2. **Pick Files** — Check/uncheck individual geometry files (Select All supported)
+3. **Preprocess** — Optionally apply value remapping and auto-alignment to all selected files
+4. **Configure** — Same settings as single pipeline (mode, flow directions, resolution, buffers, etc.)
+5. **Run** — All selected geometries are processed sequentially with live per-file progress tracking
+6. **Export** — Download CSV results for all completed runs
 
-## Build from Source
+Batch processing continues in the background even if you navigate away from the page.
 
-### Prerequisites
+## How It Works
 
-- C++17 compiler (GCC 9+ or Clang 10+)
-- CMake >= 3.20
-- OpenFOAM v2312
-- Eigen3, FFTW3, yaml-cpp, nlohmann/json
-- ONNX Runtime (optional, for ML prediction)
+1. **Geometry input**: A 3D binary voxel array where each voxel is either solid (fiber) or void (pore space)
+2. **Preprocessing** *(optional)*: Remap multi-valued arrays to binary; detect and correct fiber orientation via FFT analysis
+3. **Meshing**: Each void voxel becomes a hexahedral cell in the OpenFOAM mesh. Buffer zones (fiber-free layers) are prepended/appended along the flow direction to allow flow development
+4. **ML prediction** *(optional)*: ONNX neural network predicts the velocity field as an initial condition, reducing CFD iterations by up to 50%
+5. **Boundary conditions**: Inlet (fixed pressure), outlet (fixed pressure), walls (no-slip on fiber surfaces), and symmetry (on domain boundaries perpendicular to flow)
+6. **Solver**: `simpleFoamMod` — a modified version of OpenFOAM's `simpleFoam` (SIMPLE algorithm for steady-state incompressible flow). Modifications include built-in permeability monitoring and convergence-based stopping
+7. **Permeability**: Computed from Darcy's law using either the volume-averaged velocity field or the outlet flow rate, normalized by the applied pressure gradient and fluid viscosity
 
-### Build
-
-```bash
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . -j$(nproc)
-```
-
-### Command-Line Usage
+## Command-Line Usage
 
 ```bash
 # Generate mesh for all flow directions
@@ -124,17 +154,40 @@ fiberfoam/
 ├── models/              # ML models (ONNX format) and scaling factors
 ├── tests/               # Unit and integration tests
 ├── docker/              # Dockerfile, docker-compose, launch scripts
-├── docs/                # Documentation (MkDocs)
+├── docs/                # Documentation
 └── scripts/             # Utility scripts
 ```
 
-## How It Works
+## Architecture
 
-1. **Geometry input**: A 3D binary voxel array where each voxel is either solid (fiber) or void (pore space)
-2. **Meshing**: Each void voxel becomes a hexahedral cell in the OpenFOAM mesh. Buffer zones (fiber-free layers) are prepended/appended along the flow direction to allow flow development
-3. **Boundary conditions**: Inlet (fixed pressure), outlet (fixed pressure), walls (no-slip on fiber surfaces), and symmetry (on domain boundaries perpendicular to flow)
-4. **Solver**: `simpleFoamMod` — a modified version of OpenFOAM's `simpleFoam` (SIMPLE algorithm for steady-state incompressible flow). Modifications include built-in permeability monitoring and convergence-based stopping
-5. **Permeability**: Computed from Darcy's law using either the volume-averaged velocity field or the outlet flow rate, normalized by the applied pressure gradient and fluid viscosity
+```
+┌─────────────────────────────────────────────────────────┐
+│  Browser (React/TypeScript)                             │
+│  ├── Pipeline Page (single geometry workflow)           │
+│  ├── Batch Page (multi-file processing)                 │
+│  └── History Page (past job results)                    │
+└────────────────────────┬────────────────────────────────┘
+                         │ REST API
+┌────────────────────────▼────────────────────────────────┐
+│  FastAPI Backend (Python)                               │
+│  ├── Job orchestration & async execution                │
+│  ├── Preprocessing (remap, rotate, auto-align)          │
+│  ├── Pipeline sequencing (mesh → predict → sim → post)  │
+│  └── Results management & CSV export                    │
+└────────────────────────┬────────────────────────────────┘
+                         │ subprocess calls
+┌────────────────────────▼────────────────────────────────┐
+│  C++ Executables                                        │
+│  ├── fiberFoamMesh       (voxel → OpenFOAM hex mesh)    │
+│  ├── fiberFoamPredict    (ONNX ML velocity prediction)  │
+│  ├── simpleFoamMod       (OpenFOAM SIMPLE solver)       │
+│  └── fiberFoamPostProcess (permeability extraction)     │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Feedback
+
+Use the **Feedback** button in the sidebar of the GUI to submit bug reports, feature requests, or questions — no account required.
 
 ## License
 

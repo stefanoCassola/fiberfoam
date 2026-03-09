@@ -6,7 +6,20 @@ FiberFoam includes a web-based GUI built with FastAPI (backend) and React/TypeSc
 
 ## Accessing the GUI
 
-### Docker (recommended)
+### Online (Vercel)
+
+Visit **[fiberfoam.vercel.app](https://fiberfoam.vercel.app)**.
+
+The web app detects whether a local backend is running. If not, it provides a guided setup flow:
+
+1. Detects your operating system (Windows, macOS, Linux)
+2. Links to the Docker installer for your platform
+3. Provides the `docker run` command to start the backend
+4. Auto-retries the connection every 5 seconds and proceeds once detected
+
+All computation runs on your local machine — the Vercel site is only the frontend interface.
+
+### Docker (recommended for offline use)
 
 ```bash
 cd docker
@@ -51,38 +64,45 @@ The frontend dev server runs at `http://localhost:5173` and proxies API requests
 
 The **Pipeline** page guides you through the full simulation workflow in sequential steps.
 
-### Step 1: Upload & Preprocess
+### Step 1: Upload
 
 - **Upload** a binary voxel geometry file (`.dat`, `.npy`, `.raw`)
-- **Analyze** the file to see voxel dimensions, unique values, and value counts
-- **Remap** values if needed (select which value represents pore space)
 - **3D Viewer** — toggle an interactive visualization of the geometry with orbit controls, auto-rotate, and zoom
+
+### Step 2: Preprocess
+
+- **Analyze** the file to see voxel dimensions, unique values, and value counts
+- **Remap** values if needed (select which value represents pore space, choose how to treat other values)
 - **Orientation** — estimate fiber alignment via FFT; manually rotate or auto-align to canonical axes
 
-### Step 2: Configure
+### Step 3: Mode Selection
 
 - **Pipeline Mode**: Mesh Only, Prediction Only, Mesh + Predict, or Full Simulation
+
+### Step 4: Configure
+
 - **Flow Directions**: X, Y, Z (one or more)
 - **Voxel Size** (physical size per voxel in meters)
 - **Voxel Resolution** (number of voxels along one edge of the cubic domain)
 - **ML Model** selection (when prediction is enabled)
 - **Buffer Zones**: inlet and outlet buffer layers (voxels)
 - **Connectivity Check**: remove disconnected fluid regions before meshing
-- **Output Folder**: choose where to save results using the folder picker
+- **Solver Settings**: max iterations, write interval, convergence criteria
+- **Output Folder**: choose where to save results using the built-in folder picker
 
-### Step 3: Run
+### Step 5: Review
 
-The pipeline executes sequentially: mesh → predict → simulate → post-process (depending on mode).
+- Summary of all selected settings before execution
 
-During execution:
+### Step 6: Progress
+
 - **Live progress** per step with status indicators
 - **Convergence chart** showing residuals (Ux, Uy, Uz, p) during simulation
+- **RAM monitor** showing live memory usage
 - **Stop & Write** button to gracefully stop the solver and write the current state
 - **Cancel** button to abort the entire pipeline
 
-The convergence chart remains visible after the solver converges until you click "View Results".
-
-### Step 4: Results
+### Step 7: Results
 
 - Permeability values per flow direction (volume-averaged and flow-rate methods)
 - Fiber volume content, flow length, cross-section area
@@ -97,10 +117,17 @@ The **Batch** page processes multiple geometry files with identical settings.
 
 ### File Selection
 
-1. Click the folder picker to open the **native OS file dialog**
-2. Select a folder containing geometry files
-3. All `.dat`, `.npy`, and `.raw` files in the folder are listed with checkboxes
+1. Click **Browse** to open the server-side file browser
+2. Navigate directories to find your geometry files
+3. All `.dat`, `.npy`, and `.raw` files are listed with checkboxes
 4. Tick/untick individual files or use **Select All / Deselect All**
+
+### Preprocessing (Optional)
+
+- **Remap Values**: Apply value remapping to all selected files (choose pore value and mapping for other values)
+- **Auto-Align**: Automatically detect and correct fiber orientation for all files
+
+Preprocessing is applied identically to every selected file before its pipeline execution.
 
 ### Configuration
 
@@ -108,10 +135,37 @@ Same options as the single pipeline: mode, flow directions, voxel size, resoluti
 
 ### Execution
 
-- Click **Run Batch** — selected files are uploaded and processed sequentially
+- Click **Run Batch** — selected files are processed sequentially
 - Progress table shows each file's current step, status, and progress bar
+- **RAM monitor** shows live memory usage during processing
 - After completion, a summary shows total/completed/failed counts
 - **Export All as CSV** downloads results for all completed runs
+
+### Session Persistence
+
+Batch processing continues in the background if you navigate away from the Batch page. When you return, the page automatically restores the running batch and resumes progress display.
+
+---
+
+## Settings & Connection
+
+The **Settings** button in the sidebar opens a dialog to configure the backend connection:
+
+- View and change the backend URL (default: `http://localhost:3000/api`)
+- **Test** the connection to verify reachability
+- **Reset** to auto-detected defaults
+
+The sidebar also shows a **connection status indicator** (green = connected, red = disconnected).
+
+---
+
+## Feedback
+
+The **Feedback** button in the sidebar opens a form to submit:
+
+- **Bug reports**, **feature requests**, **questions**, or **general feedback**
+- Optional contact information for follow-up
+- No account required — submissions are stored locally (Docker) or create GitHub issues automatically (Vercel)
 
 ---
 
@@ -127,6 +181,8 @@ The backend exposes REST APIs with interactive documentation at `/docs` (Swagger
 | `/api/pipeline` | Single pipeline and batch orchestration |
 | `/api/results` | Download results, CSV export |
 | `/api/filesystem` | Server-side folder browsing, save results |
+| `/api/feedback` | Submit feedback |
+| `/api/system/stats` | RAM usage monitoring |
 | `/api/health` | Health check |
 
 ---
@@ -137,4 +193,5 @@ The backend exposes REST APIs with interactive documentation at `/docs` (Swagger
 - Output files are owned by your host user (UID/GID auto-detected from the output mount)
 - For large geometries (resolution > 200), mesh generation and simulation may take significant time
 - The 3D geometry viewer renders only exposed surface faces for efficient visualization of large voxel models
+- The folder browser can access all host mount points (configurable via `FIBERFOAM_BROWSE_ROOT`)
 - All GUI operations map to the same backend APIs available from the command line
