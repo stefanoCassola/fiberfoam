@@ -1072,6 +1072,9 @@ export default function PipelinePage() {
                   ) : (
                     <p className="text-sm text-gray-500">No models found</p>
                   )}
+                  <p className="text-xs text-yellow-500/80 mt-2">
+                    Only low-resolution models (80 voxels) are currently available. Inaccurate predictions may lead to longer convergence times — monitor residuals and consider disabling prediction if convergence stalls.
+                  </p>
                 </div>
               )}
 
