@@ -113,6 +113,9 @@ export interface BatchRequest {
   convErrorBound?: number
   inputFiles: string[]
   outputDir?: string
+  remapPoreValue?: number | null
+  remapOtherMapping?: string
+  autoAlign?: boolean
 }
 
 export interface PipelineStepStatus {

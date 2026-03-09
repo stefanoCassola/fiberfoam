@@ -298,6 +298,10 @@ class BatchRequest(BaseModel):
     viscosity: float = 7.934782609e-05
     density: float = 920.0
     deltaP: float = 1.0
+    # Preprocessing options (applied identically to each file before pipeline)
+    remapPoreValue: Optional[int] = None  # None = skip remap
+    remapOtherMapping: str = "solid"  # "solid" or "pore"
+    autoAlign: bool = False
 
 
 class BatchStatus(BaseModel):
