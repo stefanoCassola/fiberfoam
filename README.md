@@ -71,7 +71,7 @@ cmake --build . -j$(nproc)
 - **Voxel-to-mesh conversion**: Converts 3D binary voxel arrays (`.dat`, `.npy`) of fiber microstructures into OpenFOAM hexahedral meshes with proper boundary conditions for permeability measurement
 - **Buffer zone injection**: Adds configurable fiber-free inlet/outlet regions to ensure fully developed flow
 - **Connectivity filtering**: Removes disconnected fluid pockets that would produce singular linear systems
-- **ML velocity prediction**: Uses ONNX neural network models to predict velocity fields as initial conditions, significantly accelerating solver convergence
+- **ML velocity prediction**: Uses ONNX neural network models to predict velocity fields as initial conditions, potentially accelerating solver convergence. **Note:** Only low-resolution models (80 voxels) are currently available. Inaccurate predictions can lead to longer convergence times than starting from scratch — monitor residuals and consider disabling prediction if convergence stalls
 - **CFD simulation**: Runs a modified SIMPLE algorithm (`simpleFoamMod`) to compute steady-state flow through the microstructure for each flow direction (X, Y, Z)
 - **Permeability extraction**: Computes permeability via both volume-averaged velocity and flow-rate (Darcy) methods, with optional restriction to the fibrous region only
 - **Fiber orientation detection**: FFT-based automatic estimation and correction of fiber alignment
@@ -117,7 +117,7 @@ Batch processing continues in the background even if you navigate away from the 
 2. **Preprocessing** *(optional)*: Remap multi-valued arrays to binary; detect and correct fiber orientation via FFT analysis
 3. **Meshing**: Each void voxel becomes a hexahedral cell in the OpenFOAM mesh. Buffer zones (fiber-free layers) are prepended/appended along the flow direction to allow flow development
 4. **ML prediction** *(optional)*: ONNX neural network predicts the velocity field as an initial condition, reducing CFD iterations by up to 50%
-5. **Boundary conditions**: Inlet (fixed pressure), outlet (fixed pressure), walls (no-slip on fiber surfaces), and symmetry (on domain boundaries perpendicular to flow)
+5. **Boundary conditions**: Inlet (fixed pressure), outlet (fixed pressure), walls (no-slip on fiber surfaces), and periodic (on domain boundaries perpendicular to flow)
 6. **Solver**: `simpleFoamMod` — a modified version of OpenFOAM's `simpleFoam` (SIMPLE algorithm for steady-state incompressible flow). Modifications include built-in permeability monitoring and convergence-based stopping
 7. **Permeability**: Computed from Darcy's law using either the volume-averaged velocity field or the outlet flow rate, normalized by the applied pressure gradient and fluid viscosity
 
