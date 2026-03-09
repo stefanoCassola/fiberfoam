@@ -1051,7 +1051,7 @@ export default function PipelinePage() {
 
               {(mode === 'predict_only' || mode === 'mesh_predict' || mode === 'full') && (
                 <div>
-                  <label className="label">ML Model</label>
+                  <label className="label">ML Model <span className="text-xs text-gray-500 font-normal">(3D U-Net, ~1.4M parameters)</span></label>
                   {modelSets.length > 0 ? (
                     <select
                       className="input-field"
