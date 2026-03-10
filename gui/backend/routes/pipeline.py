@@ -385,7 +385,10 @@ async def _execute_pipeline(
             direction = step_name[last_us + 1:]
 
             case_dir = os.path.join(base_dir, f"{case_name}_{direction}")
-            # quick_predict runs purely in memory — no case directory needed
+            if step_type == "quick_predict":
+                # Store a predictions dir so VTK export can find velocity fields
+                pred_dir = os.path.join(base_dir, f"{case_name}_predictions")
+                state["predictDir"] = pred_dir
             if step_type != "quick_predict" and case_dir not in state["caseDirs"]:
                 state["caseDirs"].append(case_dir)
 
@@ -513,6 +516,15 @@ async def _run_quick_predict_step(
     from services.predictor import predict_permeability
 
     step_info["log"].append(f"Running quick prediction for direction {direction}...")
+    # Determine velocity save dir from pipeline state
+    state = None
+    for s in _pipelines.values():
+        for si in s.get("steps", []):
+            if si is step_info:
+                state = s
+                break
+    save_dir = state.get("predictDir", "") if state else ""
+
     try:
         results = await asyncio.get_event_loop().run_in_executor(
             None,
@@ -528,6 +540,7 @@ async def _run_quick_predict_step(
                 nu=req.viscosity,
                 density=req.density,
                 delta_p=req.deltaP,
+                save_velocity_dir=save_dir,
             ),
         )
         r = results[0]
@@ -1033,5 +1046,6 @@ def _persist_pipeline(state: dict) -> None:
             for s in state["steps"]
         ],
         "caseDirs": state.get("caseDirs", []),
+        "predictDir": state.get("predictDir", ""),
         "results": state.get("results", {}),
     })

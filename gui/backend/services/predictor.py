@@ -138,6 +138,7 @@ def predict_permeability(
     nu: float = 7.934782609e-05,
     density: float = 920.0,
     delta_p: float = 1.0,
+    save_velocity_dir: str = "",
 ) -> list[QuickPredictionResult]:
     """Run ONNX prediction and compute permeability via Darcy's law.
 
@@ -197,6 +198,11 @@ def predict_permeability(
 
         # Scale output to physical velocity
         velocity = raw_output * scale_factor
+
+        # Optionally save velocity field to disk
+        if save_velocity_dir:
+            os.makedirs(save_velocity_dir, exist_ok=True)
+            np.save(os.path.join(save_velocity_dir, f"predicted_{direction}.npy"), velocity)
 
         # Build fluid mask at model resolution (after inversion: fluid = 1)
         fluid_mask = geom_model > 0.5

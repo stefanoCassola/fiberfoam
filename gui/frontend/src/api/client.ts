@@ -439,6 +439,11 @@ export async function runQuickPrediction(params: {
   return res.data
 }
 
+export async function exportPredictionVtk(pipelineId: string, destPath: string): Promise<{ status: string; outputDir: string; files: string[] }> {
+  const res = await api.post(`/prediction/export-vtk/${pipelineId}`, { destPath }, { timeout: 120_000 })
+  return res.data
+}
+
 export async function getPredictionStatus(jobId: string): Promise<JobStatus> {
   const res = await api.get<JobStatus>(`/prediction/status/${jobId}`)
   return res.data

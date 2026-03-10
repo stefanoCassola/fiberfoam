@@ -76,7 +76,7 @@ cmake --build . -j$(nproc)
   - **FNO — Fourier Neural Operator** (~28.3M parameters, TensorFlow SavedModel)
   - **Note:** Only low-resolution models (80 voxels) are currently available. Inaccurate predictions can lead to longer convergence times than starting from scratch — monitor residuals and consider disabling prediction if convergence stalls
 - **CFD simulation**: Runs the OpenFOAM SIMPLE algorithm (`simpleFoamMod`) to compute steady-state flow through the microstructure for each flow direction (X, Y, Z)
-- **Permeability extraction**: Computes permeability via both volume-averaged velocity and flow-rate (Darcy) methods, with optional restriction to the fibrous region only
+- **Permeability extraction**: Computes permeability via both volume-averaged velocity and flow-rate (Darcy) methods, with optional restriction to the fibrous region only. The full permeability tensor (including off-diagonal components) requires CFD simulation in all three spatial directions. The ML-only mode computes only the diagonal components, as the models predict only the velocity component parallel to the applied pressure gradient
 - **Fiber orientation detection**: FFT-based automatic estimation and correction of fiber alignment
 - **Batch processing**: Process multiple geometries with identical settings in sequence
 - **Live monitoring**: Real-time RAM usage, convergence charts, and per-step progress tracking
