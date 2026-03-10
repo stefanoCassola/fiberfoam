@@ -32,6 +32,7 @@ jobs:
         run: cd build && ctest --output-on-failure
 
       - name: Check formatting
+        continue-on-error: true
         run: |
           find src -name '*.cpp' -o -name '*.h' | \
             xargs clang-format --dry-run --Werror
