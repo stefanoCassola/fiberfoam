@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         g++ \
         make \
         pkg-config \
+        curl \
+        ca-certificates \
         libeigen3-dev \
         libfftw3-dev \
         libyaml-cpp-dev \
@@ -26,7 +28,10 @@ WORKDIR /build
 
 COPY CMakeLists.txt ./
 COPY src/ ./src/
-COPY external/onnxruntime-linux-x64-1.17.1/ ./external/onnxruntime-linux-x64-1.17.1/
+# Download ONNX Runtime (cached in Docker layer)
+RUN mkdir -p external && \
+    curl -sL https://github.com/microsoft/onnxruntime/releases/download/v1.17.1/onnxruntime-linux-x64-1.17.1.tgz \
+    | tar xz -C external/
 
 RUN mkdir -p out && cd out \
     && cmake .. \
