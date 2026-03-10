@@ -105,7 +105,7 @@ COPY --from=builder-frontend /app/dist /app/frontend/dist
 
 # Copy ONNX models and scaling factors
 COPY models/ /app/models/
-COPY scaling_factors.json /app/models/scaling_factors.json
+COPY models/scaling_factors.json /app/models/scaling_factors.json
 
 # Set up Python backend
 WORKDIR /app/backend
