@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routes import geometry, prediction, mesh, simulation, postprocess, pipeline, results, preprocess, filesystem
+from routes import geometry, prediction, mesh, simulation, postprocess, pipeline, results, preprocess, filesystem, paraview
 from services.executor import job_manager
 from services.paths import (
     MESH_BIN,
@@ -35,6 +35,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=0,  # Never cache preflight responses to avoid stale CORS errors
 )
 
 app.include_router(geometry.router, prefix="/api/geometry", tags=["geometry"])
@@ -46,6 +47,7 @@ app.include_router(pipeline.router, prefix="/api/pipeline", tags=["pipeline"])
 app.include_router(results.router, prefix="/api/results", tags=["results"])
 app.include_router(preprocess.router, prefix="/api/preprocess", tags=["preprocess"])
 app.include_router(filesystem.router, prefix="/api/filesystem", tags=["filesystem"])
+app.include_router(paraview.router, prefix="/api/paraview", tags=["paraview"])
 
 
 @app.on_event("startup")

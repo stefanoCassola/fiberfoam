@@ -22,6 +22,10 @@ import {
   getResultsCsv,
   saveResultsToFolder,
   getGeometryVoxels,
+  checkParaView,
+  exportVtk,
+  openParaView,
+  listCaseDirs,
   type GeometryStats,
   type AnalyzeResult,
   type PreprocessResult,
@@ -31,6 +35,8 @@ import {
   type PipelineStatus,
   type PermeabilityResult,
   type ModelSet,
+  type CaseDir,
+  type ParaViewAvailability,
 } from '../api/client'
 
 const STEPS = ['Upload', 'Preprocess', 'Mode', 'Configure', 'Review', 'Progress', 'Results']
@@ -146,6 +152,12 @@ export default function PipelinePage() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null)
   const [results, setResults] = useState<PermeabilityResult[]>([])
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // ParaView
+  const [paraviewInfo, setParaviewInfo] = useState<ParaViewAvailability | null>(null)
+  const [caseDirs, setCaseDirs] = useState<CaseDir[]>([])
+  const [paraviewMsg, setParaviewMsg] = useState('')
+  const [vtkExporting, setVtkExporting] = useState(false)
 
   // 3D viewer
   const [showViewer, setShowViewer] = useState(false)
@@ -1483,6 +1495,104 @@ export default function PipelinePage() {
               )}
             </div>
           </div>}
+
+          {/* ParaView Visualization */}
+          {mode !== 'predict_only' && (
+            <div className="card">
+              <h3 className="card-header">Visualization (ParaView)</h3>
+              <div className="space-y-3">
+                {!paraviewInfo && (
+                  <button
+                    className="btn-secondary w-full"
+                    onClick={async () => {
+                      try {
+                        const info = await checkParaView()
+                        setParaviewInfo(info)
+                        if (pipelineId) {
+                          const res = await listCaseDirs(pipelineId)
+                          setCaseDirs(res.cases)
+                        }
+                      } catch {
+                        setParaviewMsg('Could not check ParaView availability.')
+                      }
+                    }}
+                  >
+                    Check ParaView Availability
+                  </button>
+                )}
+                {paraviewInfo && (
+                  <>
+                    <div className="text-xs text-gray-400 space-y-1">
+                      <p>ParaView: {paraviewInfo.paraview ? '✓ Available' : paraviewInfo.inDocker ? 'Not available inside Docker' : '✗ Not found on PATH'}</p>
+                      <p>foamToVTK: {paraviewInfo.foamToVTK ? '✓ Available' : '✗ Not found'}</p>
+                    </div>
+                    {caseDirs.length > 0 && (
+                      <div className="space-y-2">
+                        {caseDirs.map((c) => (
+                          <div key={c.name} className="flex items-center gap-2 text-sm">
+                            <span className="font-mono text-gray-300">{c.name}</span>
+                            <span className="text-xs text-gray-500">
+                              {c.hasMesh ? 'mesh' : ''}{c.hasResults ? ' + results' : ''}
+                            </span>
+                            <div className="flex gap-1 ml-auto">
+                              {paraviewInfo.paraview && (
+                                <button
+                                  className="btn-secondary text-xs px-2 py-1"
+                                  onClick={async () => {
+                                    setParaviewMsg('')
+                                    const res = await openParaView(c.path)
+                                    setParaviewMsg(res.hint || res.message || `Status: ${res.status}`)
+                                  }}
+                                >
+                                  Open
+                                </button>
+                              )}
+                              {paraviewInfo.foamToVTK && (
+                                <button
+                                  className="btn-secondary text-xs px-2 py-1"
+                                  disabled={vtkExporting}
+                                  onClick={async () => {
+                                    setVtkExporting(true)
+                                    setParaviewMsg('')
+                                    try {
+                                      const res = await exportVtk(c.path)
+                                      setParaviewMsg(res.status === 'ok'
+                                        ? `Exported ${res.vtkFiles.length} VTK files to ${res.vtkDir}`
+                                        : `Export error: ${res.log}`)
+                                    } catch (e: any) {
+                                      setParaviewMsg(e.message || 'VTK export failed')
+                                    } finally {
+                                      setVtkExporting(false)
+                                    }
+                                  }}
+                                >
+                                  {vtkExporting ? 'Exporting...' : 'Export VTK'}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {paraviewInfo.inDocker && caseDirs.length > 0 && (
+                      <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-800 text-blue-300 text-xs">
+                        <p className="font-medium mb-1">Running inside Docker</p>
+                        <p>ParaView GUI cannot run inside the container. To visualize, open the case on your host machine:</p>
+                        <pre className="mt-1 text-blue-200 bg-blue-950/50 p-2 rounded overflow-x-auto">
+                          paraview {caseDirs[0]?.path}/case.foam
+                        </pre>
+                      </div>
+                    )}
+                  </>
+                )}
+                {paraviewMsg && (
+                  <div className="p-2 rounded bg-gray-800 text-xs text-gray-300 font-mono break-all">
+                    {paraviewMsg}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-3">
             {mode !== 'predict_only' && (
