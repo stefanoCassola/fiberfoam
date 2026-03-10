@@ -35,6 +35,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_private_network=True,  # Allow HTTPS (Vercel) → localhost requests
     max_age=0,  # Never cache preflight responses to avoid stale CORS errors
 )
 
