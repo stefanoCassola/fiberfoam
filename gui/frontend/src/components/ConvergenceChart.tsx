@@ -6,6 +6,7 @@ interface DataPoint {
 interface ConvergenceChartProps {
   residuals: DataPoint[]
   convWindow?: number
+  directionLabel?: string
 }
 
 interface LogChartProps {
@@ -247,11 +248,15 @@ const PERM_FIELDS = [
   { key: 'permVolAvg', label: 'K vol-avg', color: '#a855f7' },
 ]
 
-export default function ConvergenceChart({ residuals, convWindow }: ConvergenceChartProps) {
+export default function ConvergenceChart({ residuals, convWindow, directionLabel }: ConvergenceChartProps) {
+  const title = directionLabel
+    ? `Solver Convergence — ${directionLabel} Direction`
+    : 'Solver Convergence'
+
   if (!residuals || residuals.length < 2) {
     return (
       <div className="card">
-        <h3 className="card-header">Solver Convergence</h3>
+        <h3 className="card-header">{title}</h3>
         <p className="text-gray-500 text-sm">Waiting for solver data...</p>
       </div>
     )
@@ -264,7 +269,7 @@ export default function ConvergenceChart({ residuals, convWindow }: ConvergenceC
 
   return (
     <div className="card space-y-4">
-      <h3 className="card-header">Solver Convergence</h3>
+      <h3 className="card-header">{title}</h3>
       {hasResiduals && (
         <LogChart title="Residuals" data={residuals} fields={RESIDUAL_FIELDS} />
       )}

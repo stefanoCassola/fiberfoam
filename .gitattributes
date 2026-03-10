@@ -1,3 +1,6 @@
 # ONNX models tracked with Git LFS
 *.onnx filter=lfs diff=lfs merge=lfs -text
+# TensorFlow SavedModel files tracked with Git LFS
 *.pb filter=lfs diff=lfs merge=lfs -text
+models/**/*_tf/**/variables.data-* filter=lfs diff=lfs merge=lfs -text
+models/**/*_tf/**/variables.index filter=lfs diff=lfs merge=lfs -text

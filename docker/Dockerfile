@@ -118,6 +118,9 @@ RUN pip3 install --no-cache-dir numpy scipy aiofiles onnxruntime tensorflow-cpu 
 # Create data directories
 RUN mkdir -p /data/cases /data/input /data/jobs /data/uploads /app/models
 
+ARG FIBERFOAM_VERSION=dev
+ENV FIBERFOAM_VERSION=${FIBERFOAM_VERSION}
+
 ENV FIBERFOAM_UPLOAD_DIR=/data/uploads
 ENV FIBERFOAM_MODELS_DIR=/app/models
 ENV FIBERFOAM_WORK_DIR=/data/cases

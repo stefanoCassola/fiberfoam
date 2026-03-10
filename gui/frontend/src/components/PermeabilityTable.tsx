@@ -108,6 +108,64 @@ export default function PermeabilityTable({
           </div>
         </div>
       )}
+
+      {/* Full permeability tensor when all 3 directions are available */}
+      {(() => {
+        const byDir: Record<string, PermeabilityResult> = {}
+        for (const r of results) byDir[r.direction] = r
+        if (!byDir.x || !byDir.y || !byDir.z) return null
+
+        // Each simulation direction gives one column of the tensor:
+        //   X flow -> Kxx (main), Kyx (secondary), Kzx (tertiary)
+        //   Y flow -> Kyy (main), Kxy (secondary), Kzy (tertiary)
+        //   Z flow -> Kzz (main), Kxz (secondary), Kyz (tertiary)
+        const tensor = [
+          [byDir.x.permVolAvgMain,      byDir.y.permVolAvgTertiary, byDir.z.permVolAvgSecondary],
+          [byDir.x.permVolAvgSecondary,  byDir.y.permVolAvgMain,     byDir.z.permVolAvgTertiary],
+          [byDir.x.permVolAvgTertiary,   byDir.y.permVolAvgSecondary, byDir.z.permVolAvgMain],
+        ]
+        const labels = ['X', 'Y', 'Z']
+
+        return (
+          <div className="mt-6 pt-4 border-t border-gray-700">
+            <h4 className="text-sm font-semibold text-gray-300 mb-3">
+              Permeability Tensor (Vol. Avg.)
+            </h4>
+            <div className="overflow-x-auto">
+              <table className="text-sm mx-auto">
+                <thead>
+                  <tr className="text-gray-500">
+                    <th className="px-3 pb-2" />
+                    {labels.map((l) => (
+                      <th key={l} className="px-3 pb-2 font-medium text-center">{l}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tensor.map((row, i) => (
+                    <tr key={labels[i]}>
+                      <td className="px-3 py-1 text-gray-500 font-medium">{labels[i]}</td>
+                      {row.map((val, j) => (
+                        <td
+                          key={j}
+                          className={`px-3 py-1 font-mono text-center ${
+                            i === j ? 'text-primary-400 font-semibold' : 'text-gray-400'
+                          }`}
+                        >
+                          {formatScientific(val)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-600 mt-2 text-center">
+              Diagonal elements highlighted. Based on volume-averaged velocity.
+            </p>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getBackendUrl, setBackendUrl } from '../api/client'
+import { getBackendUrl, setBackendUrl, getHealth, checkForUpdates, type UpdateCheckResponse } from '../api/client'
 
 interface SetupPageProps {
   connected: boolean
@@ -54,9 +54,11 @@ const DOCKER_INSTALL: Record<OS, { name: string; url: string; steps: string[] }>
   },
 }
 
-const DOCKER_RUN_CMD = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ghcr.io/stefanocassola/fiberfoam:latest`
-
-const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ghcr.io/stefanocassola/fiberfoam:latest`
+const DOCKER_IMAGE = 'ghcr.io/stefanocassola/fiberfoam:latest'
+const DOCKER_RUN_CMD = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
+const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
+const DOCKER_UPDATE_CMD = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam`
+const DOCKER_UPDATE_CMD_WIN = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam`
 
 const PARAVIEW_INSTALL: Record<OS, { cmd: string; url: string }> = {
   windows: {
@@ -85,8 +87,11 @@ function StatusDot({ ok }: { ok: boolean }) {
 
 export default function SetupPage({ connected, onContinue, onRecheck }: SetupPageProps) {
   const [os] = useState<OS>(detectOS)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<string | false>(false)
   const [customUrl, setCustomUrl] = useState(getBackendUrl())
+  const [version, setVersion] = useState<string | null>(null)
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResponse | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
 
   // Auto-retry connection every 5s when not connected
   useEffect(() => {
@@ -95,9 +100,20 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
     return () => clearInterval(timer)
   }, [connected, onRecheck])
 
-  const handleCopy = (text: string) => {
+  // Fetch version and check for updates once connected
+  useEffect(() => {
+    if (!connected) return
+    getHealth().then((h) => setVersion(h.version ?? null)).catch(() => {})
+    setCheckingUpdate(true)
+    checkForUpdates()
+      .then(setUpdateInfo)
+      .catch(() => {})
+      .finally(() => setCheckingUpdate(false))
+  }, [connected])
+
+  const handleCopy = (text: string, label?: string) => {
     navigator.clipboard.writeText(text)
-    setCopied(true)
+    setCopied(label ?? 'default')
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -152,6 +168,49 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
               )}
             </div>
           </div>
+
+          {connected && version && (
+            <div className="flex items-center gap-3 mt-3">
+              <StatusDot ok={true} />
+              <span className="text-sm text-gray-300">
+                Version: <code className="text-gray-200">{version}</code>
+              </span>
+              {checkingUpdate && (
+                <span className="ml-auto text-xs text-gray-500">Checking for updates...</span>
+              )}
+              {updateInfo?.updateAvailable === true && (
+                <span className="ml-auto text-xs text-yellow-400">Update available</span>
+              )}
+              {updateInfo && updateInfo.updateAvailable === false && (
+                <span className="ml-auto text-xs text-green-400">Up to date</span>
+              )}
+            </div>
+          )}
+
+          {/* Update available banner */}
+          {connected && updateInfo?.updateAvailable && (
+            <div className="mt-4 p-3 rounded-lg bg-yellow-900/20 border border-yellow-800">
+              <p className="text-sm text-yellow-300 mb-2">
+                A newer version of FiberFoam is available. To update, run:
+              </p>
+              <div className="relative">
+                <pre className="bg-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto font-mono whitespace-pre-wrap">
+                  {`${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`}
+                </pre>
+                <button
+                  onClick={() =>
+                    handleCopy(
+                      `${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`,
+                      'update',
+                    )
+                  }
+                  className="absolute top-2 right-2 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
+                >
+                  {copied === 'update' ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {connected && (
             <button
@@ -208,10 +267,10 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
                   {runCmd}
                 </pre>
                 <button
-                  onClick={() => handleCopy(runCmd)}
+                  onClick={() => handleCopy(runCmd, 'run')}
                   className="absolute top-2 right-2 px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 text-gray-300 rounded transition-colors"
                 >
-                  {copied ? 'Copied!' : 'Copy'}
+                  {copied === 'run' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-2">

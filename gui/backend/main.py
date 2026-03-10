@@ -2,12 +2,16 @@ import glob
 import os
 
 import json
+import logging
+import urllib.request
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
+logger = logging.getLogger(__name__)
 
 from routes import geometry, prediction, mesh, simulation, postprocess, pipeline, results, preprocess, filesystem, paraview
 from services.executor import job_manager
@@ -69,7 +73,7 @@ async def health():
     )
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": os.environ.get("FIBERFOAM_VERSION", "dev"),
         "components": {
             "mesh": MESH_BIN is not None,
             "predict": PREDICT_BIN is not None,
@@ -78,6 +82,57 @@ async def health():
         },
         "models": [os.path.basename(m) for m in models],
     }
+
+
+DOCKER_IMAGE = "ghcr.io/stefanocassola/fiberfoam"
+
+
+@app.get("/api/updates/check")
+async def check_updates():
+    """Check if a newer Docker image is available on ghcr.io."""
+    current = os.environ.get("FIBERFOAM_VERSION", "dev")
+    try:
+        # Get an anonymous token for the public package
+        token_url = f"https://ghcr.io/token?scope=repository:stefanocassola/fiberfoam:pull"
+        req = urllib.request.Request(token_url)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            token = json.loads(resp.read())["token"]
+
+        # Fetch the latest image digest
+        manifest_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/manifests/latest"
+        req = urllib.request.Request(manifest_url, headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            digest = resp.headers.get("Docker-Content-Digest", "")
+
+        # List tags to find semver tags
+        tags_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/tags/list"
+        req = urllib.request.Request(tags_url, headers={
+            "Authorization": f"Bearer {token}",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            tags_data = json.loads(resp.read())
+            tags = tags_data.get("tags", [])
+
+        return {
+            "currentVersion": current,
+            "latestDigest": digest,
+            "availableTags": tags,
+            "updateAvailable": current != "dev" and digest and f"sha-{current.replace('sha-', '')}" not in digest,
+            "image": DOCKER_IMAGE,
+        }
+    except Exception as exc:
+        logger.warning("Update check failed: %s", exc)
+        return {
+            "currentVersion": current,
+            "latestDigest": None,
+            "availableTags": [],
+            "updateAvailable": None,
+            "error": str(exc),
+            "image": DOCKER_IMAGE,
+        }
 
 
 @app.get("/api/system/stats")

@@ -703,6 +703,20 @@ export async function getHealth(): Promise<HealthResponse> {
   return res.data
 }
 
+export interface UpdateCheckResponse {
+  currentVersion: string
+  latestDigest: string | null
+  availableTags: string[]
+  updateAvailable: boolean | null
+  error?: string
+  image: string
+}
+
+export async function checkForUpdates(): Promise<UpdateCheckResponse> {
+  const res = await api.get<UpdateCheckResponse>('/updates/check', { timeout: 15000 })
+  return res.data
+}
+
 export async function getJobStatus(jobId: string): Promise<JobStatus> {
   const res = await api.get<JobStatus>(`/jobs/${jobId}`)
   return res.data

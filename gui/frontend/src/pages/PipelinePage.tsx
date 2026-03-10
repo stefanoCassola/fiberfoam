@@ -183,7 +183,12 @@ export default function PipelinePage() {
         setPipelineStatus(status)
         if (status.status === 'completed') {
           if (status.results) {
-            setResults(Object.values(status.results))
+            // Preserve direction keys and sort consistently (x, y, z)
+            const dirOrder = ['x', 'y', 'z']
+            const mapped = Object.entries(status.results)
+              .map(([dir, data]) => ({ ...data, direction: dir }))
+              .sort((a, b) => dirOrder.indexOf(a.direction) - dirOrder.indexOf(b.direction))
+            setResults(mapped)
           }
           setStep(5) // Show progress view with "View Results" button
         } else if (status.status === 'error' || status.status === 'failed') {
@@ -390,7 +395,12 @@ export default function PipelinePage() {
 
         if (status.status === 'completed') {
           if (status.results) {
-            setResults(Object.values(status.results))
+            // Preserve direction keys and sort consistently (x, y, z)
+            const dirOrder = ['x', 'y', 'z']
+            const mapped = Object.entries(status.results)
+              .map(([dir, data]) => ({ ...data, direction: dir }))
+              .sort((a, b) => dirOrder.indexOf(a.direction) - dirOrder.indexOf(b.direction))
+            setResults(mapped)
           }
           // Stay on progress step — user clicks "View Results" to continue
           if (pollingRef.current) clearInterval(pollingRef.current)
@@ -1399,22 +1409,26 @@ export default function PipelinePage() {
               </div>
             </div>
 
-            {/* Convergence chart for simulate steps */}
-            {pipelineStatus?.steps?.some(
-              (s) => s.name?.startsWith('simulate') && s.residuals && s.residuals.length >= 2,
-            ) && (
-              <ConvergenceChart
-                residuals={
-                  pipelineStatus.steps.find(
-                    (s) =>
-                      s.name?.startsWith('simulate') &&
-                      (s.status === 'running' || s.status === 'completed') &&
-                      s.residuals?.length,
-                  )?.residuals ?? []
-                }
-                convWindow={convWindow}
-              />
-            )}
+            {/* Convergence charts for all simulate steps */}
+            {pipelineStatus?.steps
+              ?.filter(
+                (s) =>
+                  s.name?.startsWith('simulate') &&
+                  (s.status === 'running' || s.status === 'completed') &&
+                  s.residuals &&
+                  s.residuals.length >= 2,
+              )
+              .map((s) => {
+                const dir = s.name!.split('_').pop()?.toUpperCase() ?? ''
+                return (
+                  <ConvergenceChart
+                    key={s.name}
+                    residuals={s.residuals ?? []}
+                    convWindow={convWindow}
+                    directionLabel={dir}
+                  />
+                )
+              })}
           </div>
         </div>
       )}
