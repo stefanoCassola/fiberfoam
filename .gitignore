@@ -34,8 +34,7 @@ dist/
 FiberGeo_*/
 scaling_factors.json
 !/models/scaling_factors.json
-# TF SavedModel files require Git LFS (install git-lfs, then remove this line)
-models/**/*_tf/
+# TF SavedModel files tracked via Git LFS (see .gitattributes)
 
 # Docker runtime
 docker/output/
