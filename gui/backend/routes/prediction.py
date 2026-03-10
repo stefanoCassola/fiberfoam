@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from schemas import (
     PredictionRequest,
     PredictionResponse,
@@ -165,6 +166,112 @@ async def quick_prediction(req: QuickPredictionRequest):
             for r in results
         ]
     )
+
+
+class VtkExportBody(BaseModel):
+    destPath: str = ""
+
+
+@router.post("/export-vtk/{pipeline_id}")
+async def export_prediction_vtk(pipeline_id: str, body: VtkExportBody = VtkExportBody()):
+    """Export prediction velocity fields as VTK structured grids.
+
+    Writes VTK files to the user-chosen destination folder (on the host
+    filesystem via /host mount) or falls back to a VTK/ subdirectory
+    inside the prediction output.
+    """
+    from services import job_store
+    from services.paths import OUTPUT_ROOT
+
+    # Try in-memory pipeline state first (from pipeline router)
+    predict_dir = ""
+    try:
+        from routes.pipeline import _pipelines
+        state = _pipelines.get(pipeline_id)
+        if state:
+            predict_dir = state.get("predictDir", "")
+    except Exception:
+        pass
+
+    # Fall back to persisted job data
+    if not predict_dir:
+        job = job_store.load_job(pipeline_id)
+        if job:
+            predict_dir = job.get("predictDir", "")
+
+    if not predict_dir or not os.path.isdir(predict_dir):
+        raise HTTPException(status_code=404, detail="No prediction output directory found. Run a prediction first.")
+
+    import numpy as _np
+    import glob as _glob
+
+    # Find predicted .npy files in the predict dir
+    npy_files = sorted(_glob.glob(os.path.join(predict_dir, "predicted_*.npy")))
+    if not npy_files:
+        npy_files = sorted(_glob.glob(os.path.join(predict_dir, "predicted_*.dat")))
+
+    if not npy_files:
+        raise HTTPException(status_code=404, detail="No prediction output files found")
+
+    # Determine output directory
+    if body.destPath:
+        vtk_dir = os.path.normpath(os.path.join(OUTPUT_ROOT, body.destPath))
+        if not vtk_dir.startswith(os.path.normpath(OUTPUT_ROOT)):
+            raise HTTPException(status_code=400, detail="Invalid destination path")
+    else:
+        vtk_dir = os.path.join(predict_dir, "VTK")
+    try:
+        os.makedirs(vtk_dir, exist_ok=True)
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Permission denied creating directory. Choose a folder you have write access to.",
+        )
+
+    exported = []
+    for fpath in npy_files:
+        fname = os.path.basename(fpath)
+        name = os.path.splitext(fname)[0]
+
+        if fpath.endswith(".npy"):
+            data = _np.load(fpath).astype(_np.float32)
+        else:
+            raw = _np.loadtxt(fpath, dtype=_np.float32)
+            n = round(raw.size ** (1.0 / 3.0))
+            data = raw.reshape(n, n, n) if n * n * n == raw.size else raw
+
+        if data.ndim != 3:
+            continue
+
+        nz, ny, nx = data.shape
+        vtk_path = os.path.join(vtk_dir, f"{name}.vtk")
+
+        try:
+            f_handle = open(vtk_path, "wb")
+        except PermissionError:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Permission denied writing to {vtk_dir}. Choose a folder you have write access to.",
+            )
+        with f_handle as vf:
+            header = (
+                f"# vtk DataFile Version 3.0\n"
+                f"{name}\n"
+                f"BINARY\n"
+                f"DATASET STRUCTURED_POINTS\n"
+                f"DIMENSIONS {nx} {ny} {nz}\n"
+                f"ORIGIN 0 0 0\n"
+                f"SPACING 1 1 1\n"
+                f"POINT_DATA {nx * ny * nz}\n"
+                f"SCALARS velocity float 1\n"
+                f"LOOKUP_TABLE default\n"
+            )
+            vf.write(header.encode("ascii"))
+            vf.write(data.astype(">f4").tobytes())
+
+        exported.append(f"{name}.vtk")
+
+    return {"status": "ok", "outputDir": vtk_dir, "files": exported}
 
 
 @router.get("/models")

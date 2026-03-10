@@ -439,6 +439,11 @@ export async function runQuickPrediction(params: {
   return res.data
 }
 
+export async function exportPredictionVtk(pipelineId: string, destPath: string): Promise<{ status: string; outputDir: string; files: string[] }> {
+  const res = await api.post(`/prediction/export-vtk/${pipelineId}`, { destPath }, { timeout: 120_000 })
+  return res.data
+}
+
 export async function getPredictionStatus(jobId: string): Promise<JobStatus> {
   const res = await api.get<JobStatus>(`/prediction/status/${jobId}`)
   return res.data
@@ -642,6 +647,51 @@ export interface SaveResultsResponse {
 
 export async function saveResultsToFolder(pipelineId: string, destPath: string, force = false): Promise<SaveResultsResponse> {
   const res = await api.post<SaveResultsResponse>('/filesystem/save-results', { pipelineId, destPath, force })
+  return res.data
+}
+
+// ---------------------------------------------------------------------------
+// ParaView integration
+// ---------------------------------------------------------------------------
+export interface ParaViewAvailability {
+  inDocker: boolean
+  foamToVTK: boolean
+  paraview: boolean
+}
+
+export interface VtkExportResult {
+  status: string
+  returncode: number
+  vtkDir: string
+  vtkFiles: string[]
+  log: string
+}
+
+export interface CaseDir {
+  name: string
+  path: string
+  hasMesh: boolean
+  hasResults: boolean
+  timeSteps: string[]
+}
+
+export async function checkParaView(): Promise<ParaViewAvailability> {
+  const res = await api.get<ParaViewAvailability>('/paraview/available')
+  return res.data
+}
+
+export async function exportVtk(caseDir: string, latestTime = true): Promise<VtkExportResult> {
+  const res = await api.post<VtkExportResult>('/paraview/export-vtk', { caseDir, latestTime }, { timeout: 300_000 })
+  return res.data
+}
+
+export async function openParaView(caseDir: string, mode = 'case'): Promise<{ status: string; hint?: string; foamFile?: string; message?: string }> {
+  const res = await api.post('/paraview/open', { caseDir, mode })
+  return res.data
+}
+
+export async function listCaseDirs(pipelineId: string): Promise<{ pipelineId: string; outputDir: string; cases: CaseDir[] }> {
+  const res = await api.get(`/paraview/case-dirs/${pipelineId}`)
   return res.data
 }
 

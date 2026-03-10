@@ -22,6 +22,7 @@ import {
   getResultsCsv,
   saveResultsToFolder,
   getGeometryVoxels,
+  exportPredictionVtk,
   type GeometryStats,
   type AnalyzeResult,
   type PreprocessResult,
@@ -146,6 +147,11 @@ export default function PipelinePage() {
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null)
   const [results, setResults] = useState<PermeabilityResult[]>([])
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // VTK export for predict_only
+  const [vtkExporting, setVtkExporting] = useState(false)
+  const [vtkMsg, setVtkMsg] = useState('')
+  const [vtkDestDir, setVtkDestDir] = useState('')
 
   // 3D viewer
   const [showViewer, setShowViewer] = useState(false)
@@ -1483,6 +1489,49 @@ export default function PipelinePage() {
               )}
             </div>
           </div>}
+
+          {/* Export prediction as VTK for predict_only mode */}
+          {mode === 'predict_only' && pipelineId && (
+            <div className="card">
+              <h3 className="card-header">Export Prediction as VTK</h3>
+              <p className="text-sm text-gray-400 mb-3">
+                Export the predicted velocity fields as VTK files for visualization in ParaView.
+              </p>
+              <FolderPicker
+                value={vtkDestDir}
+                onChange={setVtkDestDir}
+              />
+              <button
+                className="btn-primary w-full flex items-center justify-center gap-2 mt-3"
+                disabled={vtkExporting || !vtkDestDir}
+                onClick={async () => {
+                  setVtkExporting(true)
+                  setVtkMsg('')
+                  try {
+                    const res = await exportPredictionVtk(pipelineId, vtkDestDir)
+                    setVtkMsg(`Exported ${res.files.length} VTK file(s) to ${res.outputDir}`)
+                  } catch (e: any) {
+                    setVtkMsg(e?.response?.data?.detail || e.message || 'Export failed')
+                  } finally {
+                    setVtkExporting(false)
+                  }
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                {vtkExporting ? 'Exporting...' : 'Export as VTK'}
+              </button>
+              {!vtkDestDir && (
+                <p className="text-xs text-gray-500 mt-1">Select a folder above to export VTK files.</p>
+              )}
+              {vtkMsg && (
+                <div className="mt-2 p-2 rounded bg-gray-800 text-xs text-gray-300">
+                  {vtkMsg}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3">
             {mode !== 'predict_only' && (

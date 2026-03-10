@@ -8,14 +8,9 @@ import JobHistoryPage from './pages/JobHistoryPage'
 import SetupPage from './pages/SetupPage'
 import { getBackendUrl } from './api/client'
 
-function isHostedMode(): boolean {
-  // Running on Vercel or any non-localhost host
-  const h = window.location.hostname
-  return h !== 'localhost' && h !== '127.0.0.1'
-}
-
 export default function App() {
   const [connected, setConnected] = useState<boolean | null>(null)
+  const [enteredApp, setEnteredApp] = useState(false)
 
   const checkBackend = useCallback(async () => {
     try {
@@ -27,11 +22,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!isHostedMode()) {
-      // Local mode (Docker serves frontend) — skip setup
-      setConnected(true)
-      return
-    }
     checkBackend()
   }, [checkBackend])
 
@@ -44,9 +34,15 @@ export default function App() {
     )
   }
 
-  // Hosted mode + not connected → setup guide
-  if (!connected && isHostedMode()) {
-    return <SetupPage onConnected={() => setConnected(true)} />
+  // Always show landing page first until user clicks "Continue"
+  if (!enteredApp) {
+    return (
+      <SetupPage
+        connected={connected}
+        onContinue={() => setEnteredApp(true)}
+        onRecheck={checkBackend}
+      />
+    )
   }
 
   return (
