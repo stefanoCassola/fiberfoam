@@ -54,17 +54,9 @@ const DOCKER_INSTALL: Record<OS, { name: string; url: string; steps: string[] }>
   },
 }
 
-const DOCKER_RUN_CMD = `docker run -d --name fiberfoam \\
-  -p 3000:8000 \\
-  -v fiberfoam-data:/data \\
-  -v \${FIBERFOAM_BROWSE_ROOT:-/}:/host \\
-  ghcr.io/stefanocassola/fiberfoam:latest`
+const DOCKER_RUN_CMD = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ghcr.io/stefanocassola/fiberfoam:latest`
 
-const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam ^
-  -p 3000:8000 ^
-  -v fiberfoam-data:/data ^
-  -v C:\\:/host ^
-  ghcr.io/stefanocassola/fiberfoam:latest`
+const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ghcr.io/stefanocassola/fiberfoam:latest`
 
 const PARAVIEW_INSTALL: Record<OS, { cmd: string; url: string }> = {
   windows: {
