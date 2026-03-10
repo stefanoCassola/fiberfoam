@@ -321,7 +321,7 @@ export default function Sidebar() {
           </svg>
           Feedback
         </button>
-        <p className="text-xs text-gray-600 px-3">v0.1.0</p>
+        <p className="text-xs text-gray-600 px-3">v1.0.0</p>
       </div>
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

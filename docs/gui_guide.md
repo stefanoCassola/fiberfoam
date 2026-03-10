@@ -97,7 +97,8 @@ The **Pipeline** page guides you through the full simulation workflow in sequent
 ### Step 6: Progress
 
 - **Live progress** per step with status indicators
-- **Convergence chart** showing residuals (Ux, Uy, Uz, p) during simulation
+- **Convergence charts** showing residuals (Ux, Uy, Uz, p) and permeability convergence for each flow direction separately. When simulating multiple directions, each gets its own chart with a direction label
+- **Regression line** over the convergence window, showing the permeability stabilization trend
 - **RAM monitor** showing live memory usage
 - **Stop & Write** button to gracefully stop the solver and write the current state
 - **Cancel** button to abort the entire pipeline
@@ -105,6 +106,7 @@ The **Pipeline** page guides you through the full simulation workflow in sequent
 ### Step 7: Results
 
 - Permeability values per flow direction (volume-averaged and flow-rate methods)
+- **Full 3x3 permeability tensor** (volume-averaged) when all three flow directions (X, Y, Z) are simulated, including off-diagonal components. Diagonal elements are highlighted
 - Fiber volume content, flow length, cross-section area
 - **Download CSV** with all results
 - **Save to Folder** to copy case directories to a chosen location
@@ -159,6 +161,29 @@ The sidebar also shows a **connection status indicator** (green = connected, red
 
 ---
 
+## Update Checking
+
+When connected to the backend, the landing page automatically checks for newer versions of the Docker image. If an update is available, a yellow banner shows the commands to pull the latest image and restart the container. The current version is displayed in the status section.
+
+Version information is embedded in the Docker image at build time and returned by the `/api/health` endpoint.
+
+---
+
+## ML Model Selection
+
+FiberFoam ships with two neural network architectures for velocity field prediction:
+
+| Model | Parameters | Format | Strengths |
+|-------|-----------|--------|-----------|
+| **3D U-Net** | ~1.4M | ONNX | Fast inference, low memory |
+| **FNO** (Fourier Neural Operator) | ~28.3M | TensorFlow SavedModel | Higher capacity |
+
+Select the model in **Step 4: Configure** when prediction is enabled. Both models are available at 80-voxel resolution.
+
+**Note:** Inaccurate predictions can lead to longer convergence times than starting from scratch. Monitor the convergence chart — if residuals increase or stall, consider re-running without prediction.
+
+---
+
 ## Feedback
 
 The **Feedback** button in the sidebar opens a form to submit:
@@ -183,7 +208,8 @@ The backend exposes REST APIs with interactive documentation at `/docs` (Swagger
 | `/api/filesystem` | Server-side folder browsing, save results |
 | `/api/feedback` | Submit feedback |
 | `/api/system/stats` | RAM usage monitoring |
-| `/api/health` | Health check |
+| `/api/health` | Health check and version info |
+| `/api/updates/check` | Check for newer Docker image versions |
 
 ---
 

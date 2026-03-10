@@ -23,18 +23,33 @@ Visit **[fiberfoam.vercel.app](https://fiberfoam.vercel.app)** — the web app g
 
 ### Option 2: Docker (Recommended for Offline Use)
 
+**Pre-built image (quickest):**
+
 ```bash
-cd docker
-./launch.sh
+docker run -d --name fiberfoam -p 3000:8000 \
+  -v fiberfoam-data:/data -v /:/host \
+  ghcr.io/stefanocassola/fiberfoam:latest
 ```
 
 Open your browser at **http://localhost:3000**.
 
-#### Windows
+<details>
+<summary>Windows (PowerShell)</summary>
 
 ```powershell
+docker run -d --name fiberfoam -p 3000:8000 `
+  -v fiberfoam-data:/data -v C:\:/host `
+  ghcr.io/stefanocassola/fiberfoam:latest
+```
+
+</details>
+
+**Build locally (for development or offline use):**
+
+```bash
 cd docker
-.\launch.ps1
+./launch.sh          # Linux/macOS
+.\launch.ps1         # Windows PowerShell
 ```
 
 #### Configuration
@@ -56,7 +71,7 @@ Place your `.dat` or `.npy` geometry files in the input directory before startin
 - OpenFOAM v2312
 - Eigen3, FFTW3, yaml-cpp, nlohmann/json
 - ONNX Runtime (optional, for ML prediction)
-- Node.js 18+ (for the web GUI)
+- Node.js 20+ (for the web GUI)
 
 #### Build
 

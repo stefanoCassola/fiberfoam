@@ -26,7 +26,7 @@ nav:
   - Development:
     - Architecture: development/architecture.md
     - Contributing: development/contributing.md
-  - API Reference: api/
+  # API Reference available at /docs (Swagger) and /redoc when backend is running
 
 markdown_extensions:
   - pymdownx.highlight
