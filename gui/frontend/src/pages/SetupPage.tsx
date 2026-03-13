@@ -61,8 +61,8 @@ const DOCKER_INSTALL: Record<OS, { name: string; url: string; steps: string[] }>
 const DOCKER_IMAGE = 'ghcr.io/stefanocassola/fiberfoam:latest'
 const DOCKER_RUN_CMD = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
 const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
-const DOCKER_UPDATE_CMD = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam`
-const DOCKER_UPDATE_CMD_WIN = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam`
+const DOCKER_UPDATE_CMD = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam && docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
+const DOCKER_UPDATE_CMD_WIN = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam && docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
 
 const PARAVIEW_INSTALL: Record<OS, { cmd: string; url: string }> = {
   windows: {
@@ -230,32 +230,15 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
                   Update available: {version} &rarr; {updateInfo?.latestVersion ?? FRONTEND_VERSION}
                 </p>
               </div>
-              <p className="text-sm text-gray-400 mb-3">
-                Follow these steps to update your FiberFoam installation:
-              </p>
-              <ol className="space-y-2 mb-3 text-sm text-gray-300">
-                <li className="flex gap-2">
-                  <span className="text-yellow-500 font-bold shrink-0">1.</span>
-                  Stop and remove the current container
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-yellow-500 font-bold shrink-0">2.</span>
-                  Pull the latest image
-                </li>
-                <li className="flex gap-2">
-                  <span className="text-yellow-500 font-bold shrink-0">3.</span>
-                  Start the new container
-                </li>
-              </ol>
-              <p className="text-xs text-gray-500 mb-2">
-                Run these commands in your terminal{os === 'windows' ? ' (PowerShell)' : ''}:
+              <p className="text-sm text-gray-400 mb-2">
+                Copy and paste this single command into your terminal{os === 'windows' ? ' (PowerShell)' : ''} to update:
               </p>
               <div className="relative">
-                <pre className="bg-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto font-mono whitespace-pre-wrap">{`${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`}</pre>
+                <pre className="bg-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto font-mono whitespace-pre-wrap">{os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}</pre>
                 <button
                   onClick={() =>
                     handleCopy(
-                      `${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`,
+                      os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD,
                       'update',
                     )
                   }
