@@ -491,9 +491,20 @@ async def _run_mesh_step(
 async def _run_predict_step(
     direction: str, req: PipelineRequest, case_dir: str, step_info: dict
 ) -> bool:
+    # If the selected model folder has no ONNX models (e.g. FNO with .npz only),
+    # fall back to the Python predictor which supports all formats.
+    if req.modelFolder:
+        model_dir = os.path.join(MODELS_DIR, req.modelFolder)
+        onnx_pattern = os.path.join(model_dir, f"{direction}_{req.modelRes}.onnx")
+        if not os.path.isfile(onnx_pattern):
+            step_info["log"].append(
+                f"No ONNX model for {direction} in {req.modelFolder}, using Python predictor"
+            )
+            return await _run_quick_predict_step(direction, req, case_dir, step_info)
+
     if not PREDICT_BIN:
-        step_info["log"].append("fiberFoamPredict executable not found")
-        return False
+        step_info["log"].append("fiberFoamPredict executable not found, using Python predictor")
+        return await _run_quick_predict_step(direction, req, case_dir, step_info)
 
     config_path = os.path.join(case_dir, "fiberfoam_predict.yaml")
     write_prediction_config(
