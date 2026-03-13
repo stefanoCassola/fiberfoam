@@ -77,19 +77,24 @@ def _load_scaling_factors() -> dict:
 def _find_model(direction: str, model_res: int, model_folder: str = "") -> tuple[str, str]:
     """Find a model file and return (path, format).
 
-    format is 'onnx' or 'tf'.
+    format is 'onnx', 'npz', or 'tf'.
     """
     if model_folder:
         folder = os.path.join(MODELS_DIR, model_folder)
     else:
         folder = os.path.join(MODELS_DIR, f"res{model_res}")
 
-    # Check ONNX first
+    # Check ONNX first (works for U-Net; FNO ONNX uses unsupported RFFT3D ops)
     onnx_path = os.path.join(folder, f"{direction}_{model_res}.onnx")
     if os.path.isfile(onnx_path):
         return onnx_path, "onnx"
 
-    # Check TF SavedModel directory
+    # Check numpy FNO weights (.npz) — pure-Python inference, no onnxruntime needed
+    npz_path = os.path.join(folder, f"{direction}_{model_res}_fno.npz")
+    if os.path.isfile(npz_path):
+        return npz_path, "npz"
+
+    # Check TF SavedModel directory (fallback, requires tensorflow)
     tf_path = os.path.join(folder, f"{direction}_{model_res}_tf")
     if os.path.isdir(tf_path) and os.path.isfile(os.path.join(tf_path, "saved_model.pb")):
         return tf_path, "tf"
@@ -114,6 +119,11 @@ def _run_onnx_inference(
         input_name = session.get_inputs()[0].name
         result = session.run(None, {input_name: input_tensor})
         return result[0].squeeze()
+
+    elif fmt == "npz":
+        from services.fno_numpy import FNOModel
+        model = FNOModel(model_path)
+        return model.predict(geom)
 
     else:  # TF SavedModel
         import tensorflow as tf

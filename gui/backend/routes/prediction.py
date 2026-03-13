@@ -306,6 +306,19 @@ async def list_models():
         if m:
             sets[folder].append(m.group(1))
 
+    # Also find FNO numpy weights (e.g. "x_80_fno.npz")
+    for npz in _glob.glob(os.path.join(MODELS_DIR, "**/*_fno.npz"), recursive=True):
+        rel = os.path.relpath(npz, MODELS_DIR)
+        parts = rel.split("/")
+        folder = parts[0] if len(parts) > 1 else ""
+        basename = parts[-1]  # e.g. "x_80_fno.npz"
+        m = _re.match(r"([xyz])_\d+_fno\.npz$", basename)
+        if m:
+            direction = m.group(1)
+            if direction not in sets.get(folder, []):
+                sets[folder].append(direction)
+                all_files.append(rel)
+
     # Also find TF SavedModel directories (e.g. "x_80_tf/saved_model.pb")
     for tf_pb in _glob.glob(os.path.join(MODELS_DIR, "**/*_tf/saved_model.pb"), recursive=True):
         tf_dir = os.path.dirname(tf_pb)

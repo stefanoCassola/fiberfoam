@@ -4,8 +4,9 @@
 .gitattributes
 .gitignore
 
-# FNO models — not included in published Docker image (~327 MB)
-models/res80_fno/
+# FNO: exclude heavy TF SavedModels and ONNX (keep only NPZ for numpy inference, ~300 MB)
+models/res80_fno/*_tf/
+models/res80_fno/*.onnx
 
 # Build artifacts
 build/
