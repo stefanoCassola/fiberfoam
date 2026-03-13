@@ -72,41 +72,12 @@ FROM opencfd/openfoam-default:2312 AS openfoam-runtime
 
 USER root
 
-# Collect only the shared libraries and binaries actually needed at runtime.
-# simpleFoamMod links:  OpenFOAM finiteVolume fvOptions meshTools sampling
-#                       turbulenceModels incompressibleTurbulenceModels
-#                       incompressibleTransportModels atmosphericModels
-# foamToVTK pulls additional transitive deps (see ldd output).
-# We use ldd to discover them all automatically, plus the dummy/ and
-# sys-openmpi/ Pstream stubs.
-RUN bash -c '\
-    set -e; \
-    source /usr/lib/openfoam/openfoam2312/etc/bashrc; \
-    OF=/usr/lib/openfoam/openfoam2312; \
-    OUT=/opt/openfoam; \
-    mkdir -p $OUT/lib $OUT/bin $OUT/etc $OUT/lib/dummy $OUT/lib/sys-openmpi; \
-    \
-    # Collect all OpenFOAM .so deps from foamToVTK and simpleFoam (proxy for simpleFoamMod) \
-    for bin in $(which foamToVTK) $(which simpleFoam); do \
-        ldd $bin 2>/dev/null | grep openfoam | awk "{print \$3}" >> /tmp/of-libs.txt; \
-    done; \
-    sort -u /tmp/of-libs.txt | while read lib; do \
-        cp -L "$lib" $OUT/lib/ 2>/dev/null || true; \
-    done; \
-    \
-    # Copy dummy and sys-openmpi Pstream stubs \
-    cp $OF/platforms/linux64GccDPInt32Opt/lib/dummy/* $OUT/lib/dummy/ 2>/dev/null || true; \
-    cp $OF/platforms/linux64GccDPInt32Opt/lib/sys-openmpi/* $OUT/lib/sys-openmpi/ 2>/dev/null || true; \
-    \
-    # Copy foamToVTK binary \
-    cp $(which foamToVTK) $OUT/bin/; \
-    \
-    # Copy minimal etc/ (bashrc + config) for environment sourcing \
-    cp -r $OF/etc/* $OUT/etc/; \
-    \
-    echo "OpenFOAM runtime extraction complete"; \
-    du -sh $OUT/; \
-    '
+SHELL ["/bin/bash", "-c"]
+
+# Use a helper script to avoid Dockerfile shell escaping issues with
+# awk, ldd, and variable expansion inside RUN.
+COPY docker/extract-openfoam-runtime.sh /tmp/extract.sh
+RUN chmod +x /tmp/extract.sh && /tmp/extract.sh
 
 # ---------------------------------------------------------------------------
 # Stage 4: Build React frontend
@@ -186,7 +157,7 @@ ENV FIBERFOAM_MODELS_DIR=/app/models
 ENV FIBERFOAM_WORK_DIR=/data/cases
 ENV FIBERFOAM_BATCH_DIR=/data/input
 ENV FIBERFOAM_SCALING_FACTORS=/app/models/scaling_factors.json
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib/dummy:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib/dummy
 
 EXPOSE 8000
 
