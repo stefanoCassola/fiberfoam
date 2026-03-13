@@ -233,6 +233,7 @@ class PipelineModeEnum(str, Enum):
     mesh_only = "mesh_only"
     predict_only = "predict_only"
     mesh_predict = "mesh_predict"
+    mesh_solve = "mesh_solve"
     full = "full"
 
 

@@ -19,6 +19,7 @@ const MODE_LABELS: Record<PipelineMode, { title: string; desc: string }> = {
   mesh_only: { title: 'Mesh Only', desc: 'Generate OpenFOAM hex-mesh' },
   predict_only: { title: 'Prediction Only', desc: 'ML-based permeability prediction' },
   mesh_predict: { title: 'Mesh + Predict', desc: 'Mesh generation with ML prediction' },
+  mesh_solve: { title: 'Mesh + CFD Solve', desc: 'Mesh + CFD simulation (no ML)' },
   full: { title: 'Full Simulation', desc: 'Mesh, predict, and CFD solve' },
 }
 

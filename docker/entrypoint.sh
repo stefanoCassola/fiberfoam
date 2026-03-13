@@ -6,9 +6,34 @@
 # explicitly provided.  This way `docker compose up` works correctly
 # even without launch.sh setting HOST_UID / HOST_GID.
 if [ -z "$HOST_UID" ] || [ "$HOST_UID" = "0" ]; then
-    if [ -d /data/cases ]; then
-        HOST_UID="$(stat -c '%u' /data/cases)"
-        HOST_GID="$(stat -c '%g' /data/cases)"
+    # Detect from /host mount: find the most recently modified non-root
+    # home directory (most likely the active user)
+    if [ -d /host/home ]; then
+        _best_uid=""
+        _best_gid=""
+        _best_mtime=0
+        for d in /host/home/*/; do
+            [ -d "$d" ] || continue
+            _uid="$(stat -c '%u' "$d")"
+            [ "$_uid" = "0" ] && continue
+            _mtime="$(stat -c '%Y' "$d")"
+            if [ "$_mtime" -gt "$_best_mtime" ]; then
+                _best_mtime="$_mtime"
+                _best_uid="$_uid"
+                _best_gid="$(stat -c '%g' "$d")"
+            fi
+        done
+        if [ -n "$_best_uid" ]; then
+            HOST_UID="$_best_uid"
+            HOST_GID="$_best_gid"
+        fi
+    fi
+    # Fallback: detect from /data/cases bind mount
+    if [ -z "$HOST_UID" ] || [ "$HOST_UID" = "0" ]; then
+        if [ -d /data/cases ]; then
+            HOST_UID="$(stat -c '%u' /data/cases)"
+            HOST_GID="$(stat -c '%g' /data/cases)"
+        fi
     fi
 fi
 

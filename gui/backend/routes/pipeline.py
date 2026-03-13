@@ -344,6 +344,10 @@ def _build_step_list(mode: PipelineModeEnum, directions: list[str]) -> list[str]
     elif mode == PipelineModeEnum.mesh_predict:
         for d in directions:
             steps.append(f"predict_{d}")
+    elif mode == PipelineModeEnum.mesh_solve:
+        for d in directions:
+            steps.append(f"mesh_{d}")
+            steps.append(f"simulate_{d}")
     elif mode == PipelineModeEnum.full:
         for d in directions:
             steps.append(f"predict_{d}")

@@ -9,9 +9,8 @@ interface FolderPickerProps {
 
 export default function FolderPicker({ value, onChange, disabled }: FolderPickerProps) {
   const [open, setOpen] = useState(false)
-  const [currentPath, setCurrentPath] = useState('')
+  const [currentPath, setCurrentPath] = useState('/')
   const [dirs, setDirs] = useState<BrowseEntry[]>([])
-  const [rootPath, setRootPath] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [newFolderName, setNewFolderName] = useState('')
@@ -21,10 +20,9 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
     setLoading(true)
     setError(null)
     try {
-      const result = await browseFilesystem(path)
+      const result = await browseFilesystem(path || '/')
       setDirs(result.dirs)
-      setCurrentPath(result.path)
-      setRootPath(result.root)
+      setCurrentPath(result.path || '/')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to browse')
     } finally {
@@ -34,7 +32,8 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
 
   useEffect(() => {
     if (open) {
-      browse(value || '')
+      // Start from the currently selected path, or home directory, or root
+      browse(value || '/')
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -45,16 +44,16 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
 
   const handleNavigate = useCallback(
     (dirName: string) => {
-      const next = currentPath ? `${currentPath}/${dirName}` : dirName
-      browse(next)
+      const base = currentPath === '/' ? '' : currentPath
+      browse(`${base}/${dirName}`)
     },
     [currentPath, browse],
   )
 
   const handleUp = useCallback(() => {
-    const parts = currentPath.split('/').filter(Boolean)
-    parts.pop()
-    browse(parts.join('/'))
+    if (currentPath === '/') return
+    const parent = currentPath.replace(/\/[^/]+\/?$/, '') || '/'
+    browse(parent)
   }, [currentPath, browse])
 
   const handleCreateFolder = useCallback(async () => {
@@ -62,8 +61,8 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
     setCreatingFolder(true)
     setError(null)
     try {
-      const target = currentPath ? `${currentPath}/${newFolderName.trim()}` : newFolderName.trim()
-      await createDirectory(target)
+      const base = currentPath === '/' ? '' : currentPath
+      await createDirectory(`${base}/${newFolderName.trim()}`)
       setNewFolderName('')
       browse(currentPath)
     } catch (err) {
@@ -73,7 +72,10 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
     }
   }, [currentPath, newFolderName, browse])
 
-  const pathParts = currentPath ? currentPath.split('/').filter(Boolean) : []
+  // Split path into breadcrumb parts
+  const pathParts = currentPath === '/'
+    ? []
+    : currentPath.split('/').filter(Boolean)
 
   return (
     <div>
@@ -112,16 +114,16 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
             {/* Breadcrumb */}
             <div className="px-5 py-3 border-b border-gray-800 flex items-center gap-1 text-sm overflow-x-auto">
               <button
-                onClick={() => browse('')}
+                onClick={() => browse('/')}
                 className="text-primary-400 hover:text-primary-300 shrink-0 font-medium"
               >
-                Home
+                /
               </button>
               {pathParts.map((part, i) => (
                 <span key={i} className="flex items-center gap-1">
                   <span className="text-gray-600">/</span>
                   <button
-                    onClick={() => browse(pathParts.slice(0, i + 1).join('/'))}
+                    onClick={() => browse('/' + pathParts.slice(0, i + 1).join('/'))}
                     className="text-primary-400 hover:text-primary-300 font-mono text-xs"
                   >
                     {part}
@@ -145,7 +147,7 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
               ) : (
                 <div className="space-y-1">
                   {/* Up directory */}
-                  {currentPath && (
+                  {currentPath !== '/' && (
                     <button
                       onClick={handleUp}
                       className="flex items-center gap-3 w-full px-3 py-2 rounded-lg hover:bg-gray-800/50 transition-colors text-left"
@@ -157,7 +159,7 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
                     </button>
                   )}
 
-                  {dirs.length === 0 && !currentPath && (
+                  {dirs.length === 0 && currentPath === '/' && (
                     <p className="text-sm text-gray-500 py-2">
                       Empty directory. Create a new folder below.
                     </p>
@@ -204,8 +206,8 @@ export default function FolderPicker({ value, onChange, disabled }: FolderPicker
 
             {/* Footer: current selection + confirm */}
             <div className="px-5 py-4 border-t border-gray-800 flex items-center justify-between">
-              <div className="text-xs text-gray-500 truncate mr-4">
-                {rootPath}/{currentPath || ''}
+              <div className="text-xs text-gray-500 truncate mr-4 font-mono">
+                {currentPath}
               </div>
               <div className="flex gap-2 shrink-0">
                 <button onClick={() => setOpen(false)} className="btn-secondary text-sm">

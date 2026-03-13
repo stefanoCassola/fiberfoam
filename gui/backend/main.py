@@ -29,7 +29,7 @@ from services.paths import (
 
 app = FastAPI(
     title="FiberFoam",
-    version="0.1.0",
+    version=os.environ.get("FIBERFOAM_VERSION", "dev"),
     description="Web GUI for fiber foam flow simulation",
 )
 
@@ -87,6 +87,15 @@ async def health():
 DOCKER_IMAGE = "ghcr.io/stefanocassola/fiberfoam"
 
 
+def _parse_version(tag: str) -> tuple[int, ...] | None:
+    """Parse a semver-like tag (e.g. 'v0.2.0' or '0.2.0') into a tuple."""
+    import re
+    m = re.match(r"v?(\d+(?:\.\d+)*)", tag)
+    if not m:
+        return None
+    return tuple(int(x) for x in m.group(1).split("."))
+
+
 @app.get("/api/updates/check")
 async def check_updates():
     """Check if a newer Docker image is available on ghcr.io."""
@@ -98,15 +107,6 @@ async def check_updates():
         with urllib.request.urlopen(req, timeout=10) as resp:
             token = json.loads(resp.read())["token"]
 
-        # Fetch the latest image digest
-        manifest_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/manifests/latest"
-        req = urllib.request.Request(manifest_url, headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json",
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            digest = resp.headers.get("Docker-Content-Digest", "")
-
         # List tags to find semver tags
         tags_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/tags/list"
         req = urllib.request.Request(tags_url, headers={
@@ -116,18 +116,32 @@ async def check_updates():
             tags_data = json.loads(resp.read())
             tags = tags_data.get("tags", [])
 
+        # Find the latest semver tag
+        semver_tags = [(t, _parse_version(t)) for t in tags]
+        semver_tags = [(t, v) for t, v in semver_tags if v is not None]
+        semver_tags.sort(key=lambda x: x[1], reverse=True)
+        latest_tag = semver_tags[0][0] if semver_tags else None
+        latest_ver = semver_tags[0][1] if semver_tags else None
+
+        current_ver = _parse_version(current)
+        update_available = False
+        if current_ver and latest_ver:
+            update_available = latest_ver > current_ver
+        elif current == "dev" and latest_tag:
+            update_available = True
+
         return {
             "currentVersion": current,
-            "latestDigest": digest,
+            "latestVersion": latest_tag,
             "availableTags": tags,
-            "updateAvailable": current != "dev" and digest and f"sha-{current.replace('sha-', '')}" not in digest,
+            "updateAvailable": update_available,
             "image": DOCKER_IMAGE,
         }
     except Exception as exc:
         logger.warning("Update check failed: %s", exc)
         return {
             "currentVersion": current,
-            "latestDigest": None,
+            "latestVersion": None,
             "availableTags": [],
             "updateAvailable": None,
             "error": str(exc),
