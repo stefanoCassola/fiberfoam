@@ -96,6 +96,24 @@ def _parse_version(tag: str) -> tuple[int, ...] | None:
     return tuple(int(x) for x in m.group(1).split("."))
 
 
+def _extract_sha(version: str) -> str | None:
+    """Extract the short SHA from a version string like '0.2.0+sha.abc1234'."""
+    import re
+    m = re.search(r"(?:sha[.-])([0-9a-f]{7,})", version)
+    return m.group(1) if m else None
+
+
+def _get_tag_digest(token: str, tag: str) -> str | None:
+    """Fetch the digest of a specific tag from ghcr.io."""
+    url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/manifests/{tag}"
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.docker.distribution.manifest.v2+json, "
+                  "application/vnd.oci.image.index.v1+json",
+    })
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.headers.get("Docker-Content-Digest")
+
 
 @app.get("/api/updates/check")
 async def check_updates():
@@ -108,38 +126,29 @@ async def check_updates():
         with urllib.request.urlopen(req, timeout=10) as resp:
             token = json.loads(resp.read())["token"]
 
-        # List tags to find semver and sha tags
-        tags_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/tags/list"
-        req = urllib.request.Request(tags_url, headers={
-            "Authorization": f"Bearer {token}",
-        })
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            tags_data = json.loads(resp.read())
-            tags = tags_data.get("tags", [])
+        # Get the digest of the 'latest' tag
+        latest_digest = _get_tag_digest(token, "latest")
 
-        # Find the latest semver tag
-        semver_tags = [(t, _parse_version(t)) for t in tags]
-        semver_tags = [(t, v) for t, v in semver_tags if v is not None]
-        semver_tags.sort(key=lambda x: x[1], reverse=True)
-        latest_tag = semver_tags[0][0] if semver_tags else None
-        latest_ver = semver_tags[0][1] if semver_tags else None
+        # Get the digest of our current image's SHA tag
+        current_sha = _extract_sha(current)
+        current_digest = None
+        if current_sha:
+            try:
+                current_digest = _get_tag_digest(token, f"sha-{current_sha}")
+            except Exception:
+                pass
 
-        # Determine if update is available (semver-only comparison)
-        current_ver = _parse_version(current)
-        update_available = False
-
-        if current_ver and latest_ver:
-            update_available = latest_ver > current_ver
+        # Update available if digests differ (or we can't determine current digest)
+        if latest_digest and current_digest:
+            update_available = latest_digest != current_digest
         elif current in ("dev", "0.1.0"):
-            # Legacy or dev version: any semver tag means update available
-            update_available = bool(latest_tag)
-
-        display_latest = latest_tag
+            update_available = True
+        else:
+            update_available = False
 
         return {
             "currentVersion": current,
-            "latestVersion": display_latest,
-            "availableTags": tags,
+            "latestVersion": "latest",
             "updateAvailable": update_available,
             "image": DOCKER_IMAGE,
         }
@@ -148,7 +157,6 @@ async def check_updates():
         return {
             "currentVersion": current,
             "latestVersion": None,
-            "availableTags": [],
             "updateAvailable": None,
             "error": str(exc),
             "image": DOCKER_IMAGE,

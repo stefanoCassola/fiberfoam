@@ -707,7 +707,6 @@ export async function getHealth(): Promise<HealthResponse> {
 export interface UpdateCheckResponse {
   currentVersion: string
   latestVersion: string | null
-  availableTags: string[]
   updateAvailable: boolean | null
   error?: string
   image: string
