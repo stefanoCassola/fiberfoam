@@ -203,7 +203,7 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
             <div className="flex items-center gap-3 mt-3">
               <StatusDot ok={true} />
               <span className="text-sm text-gray-300">
-                Version: <code className="text-gray-200">{version}</code>
+                Version: <code className="text-gray-200">{version?.replace(/\+.*$/, '')}</code>
               </span>
               {checkingUpdate && (
                 <span className="ml-auto text-xs text-gray-500">Checking for updates...</span>
