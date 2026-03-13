@@ -1,5 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { getBackendUrl, setBackendUrl, getHealth, checkForUpdates, type UpdateCheckResponse } from '../api/client'
+
+// The frontend always ships at the latest version — use it to detect
+// outdated backends even when the backend's own update check is broken.
+const FRONTEND_VERSION = __APP_VERSION__
 
 interface SetupPageProps {
   connected: boolean
@@ -111,6 +115,24 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
       .finally(() => setCheckingUpdate(false))
   }, [])
 
+  // Client-side outdated detection: compare backend version against frontend version
+  const backendOutdated = useMemo(() => {
+    if (!version) return false
+    // Parse semver-like "0.2.0", "0.2.0+sha.abc", "sha-abc", "dev"
+    const parse = (v: string) => {
+      const m = v.match(/^v?(\d+)\.(\d+)\.(\d+)/)
+      return m ? [+m[1], +m[2], +m[3]] as const : null
+    }
+    const bv = parse(version)
+    const fv = parse(FRONTEND_VERSION)
+    if (!fv) return false
+    if (!bv) return true // backend is "dev" or unparseable → outdated
+    return bv[0] < fv[0] || (bv[0] === fv[0] && bv[1] < fv[1]) || (bv[0] === fv[0] && bv[1] === fv[1] && bv[2] < fv[2])
+  }, [version])
+
+  // Effective update flag: backend's own check OR client-side detection
+  const showUpdate = backendOutdated || updateInfo?.updateAvailable === true
+
   // Fetch version and check for updates once connected
   useEffect(() => {
     if (!connected) return
@@ -186,26 +208,26 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
               {checkingUpdate && (
                 <span className="ml-auto text-xs text-gray-500">Checking for updates...</span>
               )}
-              {updateInfo?.updateAvailable === true && (
+              {showUpdate && (
                 <span className="ml-auto text-xs text-yellow-400">
-                  Update available{updateInfo.latestVersion ? ` (${updateInfo.latestVersion})` : ''}
+                  Update available{updateInfo?.latestVersion ? ` (${updateInfo.latestVersion})` : ` (${FRONTEND_VERSION})`}
                 </span>
               )}
-              {updateInfo && updateInfo.updateAvailable === false && (
+              {!showUpdate && !checkingUpdate && version && (
                 <span className="ml-auto text-xs text-green-400">Up to date</span>
               )}
             </div>
           )}
 
           {/* Update available banner */}
-          {connected && updateInfo?.updateAvailable && (
+          {connected && showUpdate && (
             <div className="mt-4 p-4 rounded-lg bg-yellow-900/20 border border-yellow-800">
               <div className="flex items-center gap-2 mb-3">
                 <svg className="w-5 h-5 text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
                 </svg>
                 <p className="text-sm font-semibold text-yellow-300">
-                  Update available: {version} &rarr; {updateInfo.latestVersion ?? 'newer version'}
+                  Update available: {version} &rarr; {updateInfo?.latestVersion ?? FRONTEND_VERSION}
                 </p>
               </div>
               <p className="text-sm text-gray-400 mb-3">
