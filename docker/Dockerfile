@@ -1,6 +1,13 @@
 # =============================================================================
 # fiberFoam Full Dockerfile: OpenFOAM + C++ core + GUI
 # Multi-stage build for minimal final image size
+#
+# Stages:
+#   1. builder-cpp      – compile C++ core (libfiberfoam + apps) + download ONNX Runtime
+#   2. builder-solver   – compile simpleFoamMod against OpenFOAM 2312
+#   3. openfoam-runtime – extract only the OpenFOAM libs & binaries we need
+#   4. builder-frontend – build React frontend
+#   5. runtime          – slim ubuntu:22.04 with everything assembled
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -44,7 +51,7 @@ RUN mkdir -p out && cd out \
     && cmake --install .
 
 # ---------------------------------------------------------------------------
-# Stage 1b: Build OpenFOAM solver (simpleFoamMod)
+# Stage 2: Build OpenFOAM solver (simpleFoamMod)
 # ---------------------------------------------------------------------------
 FROM opencfd/openfoam-default:2312 AS builder-solver
 
@@ -59,7 +66,21 @@ ENV EIGEN_DIR=/usr/include/eigen3
 RUN bash -c 'source /usr/lib/openfoam/openfoam2312/etc/bashrc && cd /tmp/simpleFoamMod && wmake'
 
 # ---------------------------------------------------------------------------
-# Stage 2: Build React frontend
+# Stage 3: Extract minimal OpenFOAM runtime (libs + foamToVTK only)
+# ---------------------------------------------------------------------------
+FROM opencfd/openfoam-default:2312 AS openfoam-runtime
+
+USER root
+
+SHELL ["/bin/bash", "-c"]
+
+# Use a helper script to avoid Dockerfile shell escaping issues with
+# awk, ldd, and variable expansion inside RUN.
+COPY docker/extract-openfoam-runtime.sh /tmp/extract.sh
+RUN chmod +x /tmp/extract.sh && /tmp/extract.sh
+
+# ---------------------------------------------------------------------------
+# Stage 4: Build React frontend
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS builder-frontend
 
@@ -72,20 +93,27 @@ COPY gui/frontend/ ./
 RUN npm run build
 
 # ---------------------------------------------------------------------------
-# Stage 3: Runtime image with OpenFOAM + C++ binaries + GUI
+# Stage 5: Slim runtime image (ubuntu base instead of full OpenFOAM)
 # ---------------------------------------------------------------------------
-FROM opencfd/openfoam-default:2312 AS runtime
+FROM ubuntu:22.04 AS runtime
 
-USER root
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Install Python and runtime dependencies
+# Install only runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3-pip \
         python3-venv \
         libfftw3-3 \
         libyaml-cpp0.7 \
-        curl \
+        libstdc++6 \
+        libgomp1 \
         gosu \
+        curl \
+        # OpenFOAM system-level runtime deps (OpenMPI, hwloc, libevent, zlib)
+        libopenmpi3 \
+        libhwloc15 \
+        libevent-2.1-7 \
+        zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy C++ binaries and libraries from builder
@@ -97,6 +125,11 @@ COPY --from=builder-cpp /build/external/onnxruntime-linux-x64-1.17.1/lib/libonnx
 
 # Copy simpleFoamMod solver binary from solver builder
 COPY --from=builder-solver /root/OpenFOAM/user-v2312/platforms/linux64GccDPInt32Opt/bin/simpleFoamMod /usr/local/bin/simpleFoamMod
+
+# Copy minimal OpenFOAM runtime (libs + foamToVTK + etc)
+COPY --from=openfoam-runtime /opt/openfoam/lib/ /usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib/
+COPY --from=openfoam-runtime /opt/openfoam/bin/ /usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/bin/
+COPY --from=openfoam-runtime /opt/openfoam/etc/ /usr/lib/openfoam/openfoam2312/etc/
 
 RUN ldconfig
 
@@ -111,7 +144,7 @@ COPY models/scaling_factors.json /app/models/scaling_factors.json
 WORKDIR /app/backend
 COPY gui/backend/ ./
 
-RUN pip3 install --no-cache-dir -r requirements.txt onnxruntime tensorflow-cpu
+RUN pip3 install --no-cache-dir -r requirements.txt onnxruntime
 
 # Create data directories
 RUN mkdir -p /data/cases /data/input /data/jobs /data/uploads /app/models
@@ -124,7 +157,7 @@ ENV FIBERFOAM_MODELS_DIR=/app/models
 ENV FIBERFOAM_WORK_DIR=/data/cases
 ENV FIBERFOAM_BATCH_DIR=/data/input
 ENV FIBERFOAM_SCALING_FACTORS=/app/models/scaling_factors.json
-ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib/dummy:${LD_LIBRARY_PATH}
+ENV LD_LIBRARY_PATH=/usr/local/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib:/usr/lib/openfoam/openfoam2312/platforms/linux64GccDPInt32Opt/lib/dummy
 
 EXPOSE 8000
 

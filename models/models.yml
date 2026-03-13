@@ -19,25 +19,27 @@ models:
     architecture: "3D U-Net"
     parameters: 1414723
     description: "Z-direction velocity prediction at 80^3 resolution"
-  # FNO models (TF SavedModel, ~28.3M parameters each)
+  # FNO models (numpy weights, ~28.3M parameters each)
+  # ONNX export uses RFFT3D/IRFFT3D ops not supported by onnxruntime;
+  # inference runs via pure-numpy fno_numpy.py using .npz weights.
   - resolution: 80
     direction: x
-    path: res80_fno/x_80_tf
-    format: tensorflow
+    path: res80_fno/x_80_fno.npz
+    format: npz
     architecture: "FNO (Fourier Neural Operator)"
     parameters: 28312777
     description: "X-direction velocity prediction at 80^3 resolution (FNO)"
   - resolution: 80
     direction: y
-    path: res80_fno/y_80_tf
-    format: tensorflow
+    path: res80_fno/y_80_fno.npz
+    format: npz
     architecture: "FNO (Fourier Neural Operator)"
     parameters: 28312777
     description: "Y-direction velocity prediction at 80^3 resolution (FNO)"
   - resolution: 80
     direction: z
-    path: res80_fno/z_80_tf
-    format: tensorflow
+    path: res80_fno/z_80_fno.npz
+    format: npz
     architecture: "FNO (Fourier Neural Operator)"
     parameters: 28312777
     description: "Z-direction velocity prediction at 80^3 resolution (FNO)"

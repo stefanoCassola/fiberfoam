@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { getBackendUrl, setBackendUrl, getHealth, checkForUpdates, type UpdateCheckResponse } from '../api/client'
 
 interface SetupPageProps {
@@ -100,16 +100,22 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
     return () => clearInterval(timer)
   }, [connected, onRecheck])
 
-  // Fetch version and check for updates once connected
-  useEffect(() => {
-    if (!connected) return
+  const fetchVersionAndUpdates = useCallback(() => {
+    setVersion(null)
+    setUpdateInfo(null)
     getHealth().then((h) => setVersion(h.version ?? null)).catch(() => {})
     setCheckingUpdate(true)
     checkForUpdates()
       .then(setUpdateInfo)
       .catch(() => {})
       .finally(() => setCheckingUpdate(false))
-  }, [connected])
+  }, [])
+
+  // Fetch version and check for updates once connected
+  useEffect(() => {
+    if (!connected) return
+    fetchVersionAndUpdates()
+  }, [connected, fetchVersionAndUpdates])
 
   const handleCopy = (text: string, label?: string) => {
     navigator.clipboard.writeText(text)
@@ -120,6 +126,8 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
   const handleUrlSave = () => {
     setBackendUrl(customUrl)
     onRecheck()
+    // Re-fetch version and update info from the new backend
+    setTimeout(fetchVersionAndUpdates, 500)
   }
 
   const install = DOCKER_INSTALL[os]
@@ -179,7 +187,9 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
                 <span className="ml-auto text-xs text-gray-500">Checking for updates...</span>
               )}
               {updateInfo?.updateAvailable === true && (
-                <span className="ml-auto text-xs text-yellow-400">Update available</span>
+                <span className="ml-auto text-xs text-yellow-400">
+                  Update available{updateInfo.latestVersion ? ` (${updateInfo.latestVersion})` : ''}
+                </span>
               )}
               {updateInfo && updateInfo.updateAvailable === false && (
                 <span className="ml-auto text-xs text-green-400">Up to date</span>
@@ -189,14 +199,37 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
 
           {/* Update available banner */}
           {connected && updateInfo?.updateAvailable && (
-            <div className="mt-4 p-3 rounded-lg bg-yellow-900/20 border border-yellow-800">
-              <p className="text-sm text-yellow-300 mb-2">
-                A newer version of FiberFoam is available. To update, run:
+            <div className="mt-4 p-4 rounded-lg bg-yellow-900/20 border border-yellow-800">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-5 h-5 text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                </svg>
+                <p className="text-sm font-semibold text-yellow-300">
+                  Update available: {version} &rarr; {updateInfo.latestVersion ?? 'newer version'}
+                </p>
+              </div>
+              <p className="text-sm text-gray-400 mb-3">
+                Follow these steps to update your FiberFoam installation:
+              </p>
+              <ol className="space-y-2 mb-3 text-sm text-gray-300">
+                <li className="flex gap-2">
+                  <span className="text-yellow-500 font-bold shrink-0">1.</span>
+                  Stop and remove the current container
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-yellow-500 font-bold shrink-0">2.</span>
+                  Pull the latest image
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-yellow-500 font-bold shrink-0">3.</span>
+                  Start the new container
+                </li>
+              </ol>
+              <p className="text-xs text-gray-500 mb-2">
+                Run these commands in your terminal{os === 'windows' ? ' (PowerShell)' : ''}:
               </p>
               <div className="relative">
-                <pre className="bg-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto font-mono whitespace-pre-wrap">
-                  {`${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`}
-                </pre>
+                <pre className="bg-gray-800 rounded-lg p-3 text-xs text-gray-300 overflow-x-auto font-mono whitespace-pre-wrap">{`${os === 'windows' ? DOCKER_UPDATE_CMD_WIN : DOCKER_UPDATE_CMD}\n${os === 'windows' ? DOCKER_RUN_CMD_WIN : DOCKER_RUN_CMD}`}</pre>
                 <button
                   onClick={() =>
                     handleCopy(
@@ -209,6 +242,9 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
                   {copied === 'update' ? 'Copied!' : 'Copy'}
                 </button>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Your simulation data is stored in Docker volumes and will be preserved across updates.
+              </p>
             </div>
           )}
 
@@ -221,6 +257,26 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
             </button>
           )}
         </div>
+
+        {/* Advanced: custom URL — always visible */}
+        <details className="card mb-4">
+          <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-200">
+            Advanced: Custom backend URL
+          </summary>
+          <div className="mt-4 flex gap-2">
+            <input
+              type="text"
+              value={customUrl}
+              onChange={(e) => setCustomUrl(e.target.value)}
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-primary-500"
+              placeholder="http://localhost:3000/api"
+            />
+            <button onClick={handleUrlSave} className="btn-primary px-4 text-sm">Save</button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Change this if the Docker container is running on a different port or remote machine.
+          </p>
+        </details>
 
         {/* Setup instructions — shown when not connected */}
         {!connected && (
@@ -295,25 +351,6 @@ export default function SetupPage({ connected, onContinue, onRecheck }: SetupPag
               </p>
             </div>
 
-            {/* Advanced: custom URL */}
-            <details className="card mb-4">
-              <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-200">
-                Advanced: Custom backend URL
-              </summary>
-              <div className="mt-4 flex gap-2">
-                <input
-                  type="text"
-                  value={customUrl}
-                  onChange={(e) => setCustomUrl(e.target.value)}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-primary-500"
-                  placeholder="http://localhost:3000/api"
-                />
-                <button onClick={handleUrlSave} className="btn-primary px-4 text-sm">Save</button>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Change this if the Docker container is running on a different port or remote machine.
-              </p>
-            </details>
           </>
         )}
 

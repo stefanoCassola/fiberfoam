@@ -495,7 +495,9 @@ export default function PipelinePage() {
         return
       }
       const count = res.copiedDirs.length + (res.skippedDirs?.length ?? 0)
-      setSaveSuccess(`Saved ${count} case(s) to ${res.absPath}`)
+      const cleaned = res.deletedDirs
+      const msg = `Saved ${count} case(s) to ${res.absPath}`
+      setSaveSuccess(cleaned?.length ? `${msg}. Cleaned up ${cleaned.length} case(s) from container.` : msg)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save results')
     } finally {
@@ -546,6 +548,10 @@ export default function PipelinePage() {
     mesh_predict: {
       title: 'Mesh + Prediction',
       desc: 'OpenFOAM case with ML-predicted velocity as initial condition',
+    },
+    mesh_solve: {
+      title: 'Mesh + CFD Solve',
+      desc: 'Mesh generation + CFD simulation with zero initialization (no ML)',
     },
     full: {
       title: 'Full Pipeline',
@@ -1446,7 +1452,7 @@ export default function PipelinePage() {
             </div>
           </div>
 
-          {(mode === 'full' || mode === 'predict_only') && (
+          {(mode === 'full' || mode === 'predict_only' || mode === 'mesh_solve') && (
             <PermeabilityTable results={results} />
           )}
 

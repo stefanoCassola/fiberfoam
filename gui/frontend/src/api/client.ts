@@ -106,7 +106,7 @@ export interface JobStatus {
 }
 
 /** Matches backend PipelineModeEnum */
-export type PipelineMode = 'mesh_only' | 'predict_only' | 'mesh_predict' | 'full'
+export type PipelineMode = 'mesh_only' | 'predict_only' | 'mesh_predict' | 'mesh_solve' | 'full'
 
 /** Matches backend PipelineRequest */
 export interface PipelineRequest {
@@ -641,6 +641,7 @@ export interface SaveResultsResponse {
   absPath: string
   copiedDirs: string[]
   skippedDirs?: string[]
+  deletedDirs?: string[]
   alreadyExists?: boolean
   warnings?: string[]
 }
@@ -705,7 +706,7 @@ export async function getHealth(): Promise<HealthResponse> {
 
 export interface UpdateCheckResponse {
   currentVersion: string
-  latestDigest: string | null
+  latestVersion: string | null
   availableTags: string[]
   updateAvailable: boolean | null
   error?: string

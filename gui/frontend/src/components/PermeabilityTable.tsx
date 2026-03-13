@@ -75,7 +75,7 @@ export default function PermeabilityTable({
                 </td>
                 <td className="py-3 font-mono text-gray-400">
                   {row.fiberVolumeContent !== undefined
-                    ? `${(row.fiberVolumeContent * 100).toFixed(2)}%`
+                    ? `${row.fiberVolumeContent.toFixed(2)}%`
                     : '-'}
                 </td>
               </tr>
@@ -83,31 +83,6 @@ export default function PermeabilityTable({
           </tbody>
         </table>
       </div>
-
-      {/* Summary row */}
-      {results.length > 1 && (
-        <div className="mt-4 pt-4 border-t border-gray-700">
-          <div className="flex items-center gap-6 text-xs text-gray-500">
-            <span>
-              Average (Vol. Avg.):{' '}
-              <span className="font-mono text-gray-300">
-                {formatScientific(
-                  results.reduce((s, r) => s + (r.permVolAvgMain ?? 0), 0) / results.length,
-                )}
-              </span>
-            </span>
-            <span>
-              Average (Flow Rate):{' '}
-              <span className="font-mono text-gray-300">
-                {formatScientific(
-                  results.reduce((s, r) => s + (r.permFlowRate ?? 0), 0) /
-                    results.length,
-                )}
-              </span>
-            </span>
-          </div>
-        </div>
-      )}
 
       {/* Full permeability tensor when all 3 directions are available */}
       {(() => {

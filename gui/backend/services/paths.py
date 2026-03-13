@@ -33,6 +33,7 @@ UPLOAD_DIR = os.environ.get("FIBERFOAM_UPLOAD_DIR", "/tmp/fiberfoam/uploads")
 BATCH_DIR = os.environ.get("FIBERFOAM_BATCH_DIR", "/data/input")
 JOBS_DIR = os.environ.get("FIBERFOAM_JOBS_DIR", "/data/jobs")
 OUTPUT_ROOT = os.environ.get("FIBERFOAM_OUTPUT_ROOT", WORK_DIR)
+HOST_ROOT = os.environ.get("FIBERFOAM_HOST_ROOT", "/host")
 FEEDBACK_DIR = os.environ.get("FIBERFOAM_FEEDBACK_DIR", "/data/feedback")
 
 # OpenFOAM bashrc path for sourcing before running the solver

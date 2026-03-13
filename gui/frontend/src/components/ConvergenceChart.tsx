@@ -1,7 +1,11 @@
+import { useState } from 'react'
+
 interface DataPoint {
   iteration: number
   [field: string]: number
 }
+
+const DEFAULT_VISIBLE = 50
 
 interface ConvergenceChartProps {
   residuals: DataPoint[]
@@ -249,6 +253,9 @@ const PERM_FIELDS = [
 ]
 
 export default function ConvergenceChart({ residuals, convWindow, directionLabel }: ConvergenceChartProps) {
+  const [windowSize, setWindowSize] = useState(DEFAULT_VISIBLE)
+  const [offset, setOffset] = useState<number | null>(null) // null = follow latest
+
   const title = directionLabel
     ? `Solver Convergence — ${directionLabel} Direction`
     : 'Solver Convergence'
@@ -262,21 +269,72 @@ export default function ConvergenceChart({ residuals, convWindow, directionLabel
     )
   }
 
+  const total = residuals.length
+  const start = offset !== null ? offset : Math.max(0, total - windowSize)
+  const visibleData = residuals.slice(start, start + windowSize)
+  const atEnd = start + windowSize >= total
+
   const hasResiduals = residuals.some((r) =>
     RESIDUAL_FIELDS.some((f) => r[f.key] !== undefined && r[f.key] > 0)
   )
   const hasPerm = residuals.some((r) => r.permVolAvg !== undefined && r.permVolAvg > 0)
 
+  const scrollBack = () => {
+    const newStart = Math.max(0, start - Math.floor(windowSize / 2))
+    setOffset(newStart)
+  }
+  const scrollForward = () => {
+    const newStart = Math.min(total - windowSize, start + Math.floor(windowSize / 2))
+    if (newStart + windowSize >= total) {
+      setOffset(null) // snap to latest
+    } else {
+      setOffset(Math.max(0, newStart))
+    }
+  }
+  const goToEnd = () => setOffset(null)
+  const zoomIn = () => setWindowSize((w) => Math.max(10, Math.floor(w / 2)))
+  const zoomOut = () => setWindowSize((w) => Math.min(total, w * 2))
+  const showAll = () => { setWindowSize(total); setOffset(0) }
+
   return (
     <div className="card space-y-4">
-      <h3 className="card-header">{title}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="card-header mb-0">{title}</h3>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-gray-500 mr-2">
+            {start + 1}–{Math.min(start + windowSize, total)} / {total}
+          </span>
+          <button onClick={scrollBack} disabled={start === 0}
+            className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-default"
+            title="Scroll back">&#9664;</button>
+          <button onClick={scrollForward} disabled={atEnd}
+            className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-default"
+            title="Scroll forward">&#9654;</button>
+          <button onClick={zoomIn} disabled={windowSize <= 10}
+            className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-default"
+            title="Zoom in">+</button>
+          <button onClick={zoomOut} disabled={windowSize >= total}
+            className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 disabled:opacity-30 disabled:cursor-default"
+            title="Zoom out">&minus;</button>
+          {windowSize < total && (
+            <button onClick={showAll}
+              className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+              title="Show all">All</button>
+          )}
+          {!atEnd && (
+            <button onClick={goToEnd}
+              className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 hover:bg-gray-600"
+              title="Jump to latest">Latest</button>
+          )}
+        </div>
+      </div>
       {hasResiduals && (
-        <LogChart title="Residuals" data={residuals} fields={RESIDUAL_FIELDS} />
+        <LogChart title="Residuals" data={visibleData} fields={RESIDUAL_FIELDS} />
       )}
       {hasPerm && (
         <LogChart
           title="Permeability"
-          data={residuals}
+          data={visibleData}
           fields={PERM_FIELDS}
           yLabel="K (m²)"
           regressionField="permVolAvg"

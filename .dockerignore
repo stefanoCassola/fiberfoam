@@ -1,0 +1,24 @@
+# Git and CI
+.git
+.github
+.gitattributes
+.gitignore
+
+# FNO: exclude heavy TF SavedModels and ONNX (keep only NPZ for numpy inference, ~300 MB)
+models/res80_fno/*_tf/
+models/res80_fno/*.onnx
+
+# Build artifacts
+build/
+src/solver/simpleFoamMod/Make/linux*/
+src/solver/simpleFoamMod/lnInclude/
+
+# Development files
+gui/frontend/node_modules/
+gui/frontend/.env*
+*.md
+LICENSE
+
+# Docker context (avoid recursive inclusion)
+docker/output/
+docker/input/
