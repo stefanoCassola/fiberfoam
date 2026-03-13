@@ -111,7 +111,7 @@ COPY models/scaling_factors.json /app/models/scaling_factors.json
 WORKDIR /app/backend
 COPY gui/backend/ ./
 
-RUN pip3 install --no-cache-dir -r requirements.txt onnxruntime tensorflow-cpu
+RUN pip3 install --no-cache-dir -r requirements.txt onnxruntime
 
 # Create data directories
 RUN mkdir -p /data/cases /data/input /data/jobs /data/uploads /app/models
