@@ -45,7 +45,9 @@ jobs:
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "value=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=sha-$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+            # Use version from package.json + short SHA for traceability
+            PKG_VERSION=$(node -p "require('./gui/frontend/package.json').version")
+            echo "value=${PKG_VERSION}+sha.$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build and push

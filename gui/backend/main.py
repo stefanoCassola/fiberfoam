@@ -88,12 +88,19 @@ DOCKER_IMAGE = "ghcr.io/stefanocassola/fiberfoam"
 
 
 def _parse_version(tag: str) -> tuple[int, ...] | None:
-    """Parse a semver-like tag (e.g. 'v0.2.0' or '0.2.0') into a tuple."""
+    """Parse a semver-like tag (e.g. 'v0.2.0', '0.2.0', '0.2.0+sha.abc1234')."""
     import re
     m = re.match(r"v?(\d+(?:\.\d+)*)", tag)
     if not m:
         return None
     return tuple(int(x) for x in m.group(1).split("."))
+
+
+def _extract_sha(version: str) -> str | None:
+    """Extract the short SHA from a version string like '0.2.0+sha.abc1234' or 'sha-abc1234'."""
+    import re
+    m = re.search(r"(?:sha[.-])([0-9a-f]{7,})", version)
+    return m.group(1) if m else None
 
 
 @app.get("/api/updates/check")
@@ -107,7 +114,7 @@ async def check_updates():
         with urllib.request.urlopen(req, timeout=10) as resp:
             token = json.loads(resp.read())["token"]
 
-        # List tags to find semver tags
+        # List tags to find semver and sha tags
         tags_url = f"https://ghcr.io/v2/stefanocassola/fiberfoam/tags/list"
         req = urllib.request.Request(tags_url, headers={
             "Authorization": f"Bearer {token}",
@@ -123,16 +130,35 @@ async def check_updates():
         latest_tag = semver_tags[0][0] if semver_tags else None
         latest_ver = semver_tags[0][1] if semver_tags else None
 
+        # Find the latest SHA tag (most recent push to main)
+        sha_tags = sorted([t for t in tags if t.startswith("sha-")])
+        latest_sha_tag = sha_tags[-1] if sha_tags else None
+
+        # Determine if update is available
         current_ver = _parse_version(current)
+        current_sha = _extract_sha(current)
         update_available = False
+
         if current_ver and latest_ver:
+            # Both have semver: compare versions
             update_available = latest_ver > current_ver
-        elif current == "dev" and latest_tag:
-            update_available = True
+        elif current_ver and not latest_ver and latest_sha_tag:
+            # Current has semver but registry only has SHA tags:
+            # a newer build exists if the SHA doesn't match
+            update_available = current_sha is None or f"sha-{current_sha}" != latest_sha_tag
+        elif current in ("dev", "0.1.0"):
+            # Legacy or dev version: any registry image is newer
+            update_available = bool(latest_tag or latest_sha_tag)
+        elif current_sha and latest_sha_tag:
+            # Both are SHA-based: update if SHA differs
+            update_available = f"sha-{current_sha}" != latest_sha_tag
+
+        # Pick the best label for the latest version
+        display_latest = latest_tag or latest_sha_tag
 
         return {
             "currentVersion": current,
-            "latestVersion": latest_tag,
+            "latestVersion": display_latest,
             "availableTags": tags,
             "updateAvailable": update_available,
             "image": DOCKER_IMAGE,
