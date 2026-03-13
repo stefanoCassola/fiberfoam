@@ -1,0 +1,23 @@
+# Git and CI
+.git
+.github
+.gitattributes
+.gitignore
+
+# FNO models — not included in published Docker image (~327 MB)
+models/res80_fno/
+
+# Build artifacts
+build/
+src/solver/simpleFoamMod/Make/linux*/
+src/solver/simpleFoamMod/lnInclude/
+
+# Development files
+gui/frontend/node_modules/
+gui/frontend/.env*
+*.md
+LICENSE
+
+# Docker context (avoid recursive inclusion)
+docker/output/
+docker/input/
