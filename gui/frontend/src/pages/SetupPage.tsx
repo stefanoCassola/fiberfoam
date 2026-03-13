@@ -61,8 +61,8 @@ const DOCKER_INSTALL: Record<OS, { name: string; url: string; steps: string[] }>
 const DOCKER_IMAGE = 'ghcr.io/stefanocassola/fiberfoam:latest'
 const DOCKER_RUN_CMD = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
 const DOCKER_RUN_CMD_WIN = `docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
-const DOCKER_UPDATE_CMD = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam && docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
-const DOCKER_UPDATE_CMD_WIN = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam && docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
+const DOCKER_UPDATE_CMD = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam 2>/dev/null; docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v /:/host ${DOCKER_IMAGE}`
+const DOCKER_UPDATE_CMD_WIN = `docker pull ${DOCKER_IMAGE} && docker rm -f fiberfoam 2>$null; docker run -d --name fiberfoam -p 3000:8000 -v fiberfoam-data:/data -v C:\\:/host ${DOCKER_IMAGE}`
 
 const PARAVIEW_INSTALL: Record<OS, { cmd: string; url: string }> = {
   windows: {
