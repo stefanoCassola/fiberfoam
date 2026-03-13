@@ -502,7 +502,7 @@ async def _run_predict_step(
         voxel_size=req.voxelSize,
         voxel_resolution=req.voxelRes,
         model_resolution=req.modelRes,
-        models_dir=MODELS_DIR,
+        models_dir=os.path.join(MODELS_DIR, req.modelFolder) if req.modelFolder else MODELS_DIR,
         flow_directions=[direction],
         inlet_buffer=req.inletBuffer,
         outlet_buffer=req.outletBuffer,
