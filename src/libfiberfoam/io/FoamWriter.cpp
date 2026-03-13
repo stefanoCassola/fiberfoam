@@ -582,8 +582,6 @@ void FoamWriter::writeControlDict(const std::string& caseDir)
 
     file << hdr.str() << "\n";
     file << "\n";
-    file << "libs        (utilityFunctionObjects);\n";
-    file << "\n";
     file << "DebugSwitches\n";
     file << "{\n";
     file << "//    fvScalarMatrix      2;\n";
